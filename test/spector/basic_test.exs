@@ -83,6 +83,29 @@ defmodule SpectorTest.BasicTest do
     end
   end
 
+  describe "Event.backtrace/1" do
+    test "returns all events up to and including the given entry" do
+      {:ok, %{id: id}} = Spector.insert(Basic, %{name: "Bob", value: 99})
+      object = Repo.get!(Basic, id)
+      {:ok, _} = Spector.update(object, %{value: 100})
+      {:ok, _} = Spector.update(object, %{value: 200})
+
+      events = Repo.all(Event)
+      assert length(events) == 3
+
+      [insert_event, update1, update2] = Enum.sort_by(events, & &1.id)
+
+      # Backtrace from first event returns only itself
+      assert [^insert_event] = Event.backtrace(insert_event)
+
+      # Backtrace from second event returns first two
+      assert [^insert_event, ^update1] = Event.backtrace(update1)
+
+      # Backtrace from third event returns all three
+      assert [^insert_event, ^update1, ^update2] = Event.backtrace(update2)
+    end
+  end
+
   defp errors_on(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
       Regex.replace(~r"%{(\w+)}", msg, fn _, key ->

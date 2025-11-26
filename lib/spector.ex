@@ -23,6 +23,7 @@ defmodule Spector do
         id = UUIDv7.generate()
 
         event_attrs = %{id: id, parent_id: id, schema: schema, action: :insert, payload: attrs}
+        event_attrs = maybe_add_hash(events, event_attrs)
         object_changeset = Changeset.put_change(changeset, :id, id)
 
         with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
@@ -48,6 +49,7 @@ defmodule Spector do
       id = UUIDv7.generate()
 
       event_attrs = %{id: id, parent_id: object.id, schema: schema, action: :delete, payload: %{}}
+      event_attrs = maybe_add_hash(events, event_attrs)
 
       with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
            {:ok, deleted} <- repo.delete(object) do
@@ -75,6 +77,7 @@ defmodule Spector do
         id = UUIDv7.generate()
 
         event_attrs = %{id: id, parent_id: parent_id, schema: schema, action: action, payload: attrs}
+        event_attrs = maybe_add_hash(events, event_attrs)
         # Reset action to :update for repo.update/2
         update_changeset = Map.replace!(changeset, :action, :update)
 
@@ -86,6 +89,35 @@ defmodule Spector do
     else
       {:error, changeset}
     end
+  end
+
+  defp maybe_add_hash(events, event_attrs) do
+    if events.__spector__(:hashed) do
+      prev_hash = get_last_hash(events)
+      hash = compute_hash(prev_hash, event_attrs)
+      Map.put(event_attrs, :hash, hash)
+    else
+      event_attrs
+    end
+  end
+
+  defp get_last_hash(events) do
+    import Ecto.Query
+    repo = events.__spector__(:repo)
+
+    case repo.one(from e in events, order_by: [desc: e.id], limit: 1, select: e.hash) do
+      nil -> nil
+      hash -> hash
+    end
+  end
+
+  @json_library if Code.ensure_loaded?(Jason), do: Jason, else: JSON
+
+  defp compute_hash(prev_hash, event_attrs) do
+    prev_hash_hex = if prev_hash, do: "#{Base.encode16(prev_hash, case: :lower)}:", else: ""
+    payload_json = @json_library.encode!(event_attrs.payload)
+    data = "#{prev_hash_hex}#{event_attrs.schema}.#{event_attrs.action}#{payload_json}"
+    :crypto.hash(:sha256, data)
   end
 
   defp roll_forward(schema, events, parent_id) do

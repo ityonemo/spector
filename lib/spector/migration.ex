@@ -24,6 +24,10 @@ defmodule Spector.Migration do
       add :schema, :integer, null: false
       add :action, :integer, null: false
 
+      if Keyword.get(opts, :hashed, false) do
+        add :hash, :binary
+      end
+
       timestamps(type: :utc_datetime_usec)
     end
 

@@ -13,6 +13,7 @@ defmodule Spector.Events do
     table = Keyword.fetch!(opts, :table)
     schemas = Keyword.fetch!(opts, :schemas)
     repo = Keyword.fetch!(opts, :repo)
+    hashed = Keyword.get(opts, :hashed, false)
     # TODO: This auto-indexing scheme needs to be replaced with explicit mappings
     # to allow adding/removing/reordering schemas without breaking existing data
     schema_values = Enum.with_index(schemas, 1)
@@ -47,6 +48,7 @@ defmodule Spector.Events do
       @primary_key {:id, UUIDv7, autogenerate: true}
 
       def __spector__(:repo), do: unquote(repo)
+      def __spector__(:hashed), do: unquote(hashed)
 
       schema unquote(table) do
         belongs_to :parent, __MODULE__, type: UUIDv7
@@ -54,19 +56,37 @@ defmodule Spector.Events do
         field :schema, Ecto.Enum, values: unquote(schema_values)
         field :action, Ecto.Enum, values: unquote(action_values)
 
+        if unquote(hashed) do
+          field :hash, :binary
+        end
+
         timestamps(type: :utc_datetime_usec)
       end
 
-      def changeset(struct \\ %__MODULE__{}, attrs) do
-        struct
-        |> Changeset.cast(attrs, [:id, :parent_id, :payload, :schema, :action])
-        |> Changeset.validate_required([:id, :parent_id, :schema, :action])
-        |> Changeset.foreign_key_constraint(:parent_id)
+      if unquote(hashed) do
+        def changeset(struct \\ %__MODULE__{}, attrs) do
+          struct
+          |> Changeset.cast(attrs, [:id, :parent_id, :payload, :schema, :action, :hash])
+          |> Changeset.validate_required([:id, :parent_id, :schema, :action, :hash])
+          |> Changeset.foreign_key_constraint(:parent_id)
+        end
+      else
+        def changeset(struct \\ %__MODULE__{}, attrs) do
+          struct
+          |> Changeset.cast(attrs, [:id, :parent_id, :payload, :schema, :action])
+          |> Changeset.validate_required([:id, :parent_id, :schema, :action])
+          |> Changeset.foreign_key_constraint(:parent_id)
+        end
       end
 
       def list_by_parent_id(parent_id) do
         import Ecto.Query
         unquote(repo).all(from e in __MODULE__, where: e.parent_id == ^parent_id, order_by: e.id)
+      end
+
+      def backtrace(entry) do
+        import Ecto.Query
+        unquote(repo).all(from e in __MODULE__, where: e.parent_id == ^entry.parent_id and e.id <= ^entry.id, order_by: e.id)
       end
     end
   end
