@@ -36,33 +36,7 @@ defmodule Spector do
   end
 
   def update(object, attrs) do
-    schema = object.__struct__
-    events = schema.__spector__(:events)
-    repo = events.__spector__(:repo)
-    parent_id = object.id
-    version = schema.__spector__(:version)
-    attrs = Map.put(attrs, :version, version)
-
-    # Roll forward from events to get current state
-    changeset = schema
-      |> roll_forward(events, parent_id)
-      |> Map.replace!(:action, :update)
-      |> schema.changeset(attrs)
-
-    if changeset.valid? do
-      repo.transact(fn ->
-        id = UUIDv7.generate()
-
-        event_attrs = %{id: id, parent_id: parent_id, schema: schema, action: :update, payload: attrs}
-
-        with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
-             {:ok, updated} <- repo.update(changeset) do
-          {:ok, updated}
-        end
-      end)
-    else
-      {:error, changeset}
-    end
+    execute(object, :update, attrs)
   end
 
   def delete(object) do
