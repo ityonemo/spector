@@ -8,8 +8,8 @@ defmodule SpectorTest.Basic do
     field :value, :integer
   end
 
-  def changeset(struct, attrs) do
-    struct
+  def changeset(changeset, attrs) do
+    changeset
     |> Changeset.cast(attrs, [:name, :value])
     |> Changeset.validate_required([:name])
   end

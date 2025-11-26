@@ -9,17 +9,17 @@ defmodule SpectorTest.Versioned do
     field :value, :integer
   end
 
-  def changeset(struct, attrs) when version_in(attrs, 0..0) do
+  def changeset(changeset, attrs) when version_in(attrs, 0..0) do
     # Migrate v0 title -> v1 name
     attrs = Map.put(attrs, "name", attrs["title"])
 
-    struct
+    changeset
     |> Changeset.cast(attrs, [:name, :value])
     |> Changeset.validate_required([:name])
   end
 
-  def changeset(struct, attrs) do
-    struct
+  def changeset(changeset, attrs) do
+    changeset
     |> Changeset.cast(attrs, [:name, :value])
     |> Changeset.validate_required([:name])
   end

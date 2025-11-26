@@ -39,6 +39,7 @@ defmodule Spector.Evented do
   defmacro __using__(opts) do
     events = Keyword.fetch!(opts, :events)
     version = Keyword.get(opts, :version, 0)
+    actions = Keyword.get(opts, :actions, [])
 
     quote do
       import Spector.Evented, only: [version_in: 2, version_is: 2]
@@ -47,6 +48,7 @@ defmodule Spector.Evented do
 
       def __spector__(:events), do: unquote(events)
       def __spector__(:version), do: unquote(version)
+      def __spector__(:actions), do: unquote(actions)
     end
   end
 end

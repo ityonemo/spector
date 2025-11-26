@@ -7,7 +7,7 @@ defmodule Spector.Events do
       end
   """
 
-  @action_values [insert: 1, update: 2, delete: 3]
+  @base_actions [insert: 1, update: 2, delete: 3]
 
   defmacro __using__(opts) do
     table = Keyword.fetch!(opts, :table)
@@ -16,6 +16,16 @@ defmodule Spector.Events do
     # TODO: This auto-indexing scheme needs to be replaced with explicit mappings
     # to allow adding/removing/reordering schemas without breaking existing data
     schema_values = Enum.with_index(schemas, 1)
+
+    # Collect custom actions from all schemas
+    custom_actions =
+      schemas
+      |> Enum.map(&Macro.expand(&1, __CALLER__))
+      |> Enum.flat_map(fn schema -> schema.__spector__(:actions) end)
+      |> Enum.uniq()
+      |> Enum.with_index(4)
+
+    action_values = @base_actions ++ custom_actions
 
     requirements = for schema <- schemas do
       quote do
@@ -42,7 +52,7 @@ defmodule Spector.Events do
         belongs_to :parent, __MODULE__, type: UUIDv7
         field :payload, :map
         field :schema, Ecto.Enum, values: unquote(schema_values)
-        field :action, Ecto.Enum, values: unquote(@action_values)
+        field :action, Ecto.Enum, values: unquote(action_values)
 
         timestamps(type: :utc_datetime_usec)
       end
