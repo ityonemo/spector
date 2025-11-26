@@ -61,6 +61,23 @@ defmodule Spector do
     end
   end
 
+  def delete(object) do
+    schema = object.__struct__
+    events = schema.__spector__(:events)
+    repo = events.__spector__(:repo)
+
+    repo.transact(fn ->
+      id = UUIDv7.generate()
+
+      event_attrs = %{id: id, parent_id: object.id, schema: schema, action: :delete, payload: %{}}
+
+      with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
+           {:ok, deleted} <- repo.delete(object) do
+        {:ok, deleted}
+      end
+    end)
+  end
+
   defp roll_forward(schema, events, parent_id) do
     entries = events.list_by_parent_id(parent_id)
 

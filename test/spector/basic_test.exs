@@ -60,6 +60,29 @@ defmodule SpectorTest.BasicTest do
     end
   end
 
+  describe "Spector.delete/1" do
+    test "deletes the object and creates an event" do
+      {:ok, %{id: id}} = Spector.insert(Basic, %{name: "Bob", value: 99})
+      object = Repo.get!(Basic, id)
+
+      assert {:ok, %{id: ^id, name: "Bob", value: 99}} = Spector.delete(object)
+
+      # Object was deleted
+      assert Repo.get(Basic, id) == nil
+
+      # Delete event was created
+      events = Repo.all(Event)
+      assert length(events) == 2
+
+      assert %{
+               parent_id: ^id,
+               schema: Basic,
+               action: :delete,
+               payload: %{}
+             } = Enum.find(events, &(&1.action == :delete))
+    end
+  end
+
   defp errors_on(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
       Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
