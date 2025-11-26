@@ -10,52 +10,60 @@ defmodule Spector do
 
   1. Define your event log table using `Spector.Events`:
 
-      defmodule MyApp.Events do
-        use Spector.Events,
-          table: "events",
-          schemas: [MyApp.User, MyApp.Post],
-          repo: MyApp.Repo
-      end
+  ```elixir
+  defmodule MyApp.Events do
+    use Spector.Events,
+      table: "events",
+      schemas: [MyApp.User, MyApp.Post],
+      repo: MyApp.Repo
+  end
+  ```
 
   2. Mark your schemas as evented using `Spector.Evented`:
 
-      defmodule MyApp.User do
-        use Spector.Evented, events: MyApp.Events
-        use Ecto.Schema
+  ```elixir
+  defmodule MyApp.User do
+    use Spector.Evented, events: MyApp.Events
+    use Ecto.Schema
 
-        schema "users" do
-          field :name, :string
-          field :email, :string
-        end
+    schema "users" do
+      field :name, :string
+      field :email, :string
+    end
 
-        def changeset(changeset, attrs) do
-          changeset
-          |> Ecto.Changeset.cast(attrs, [:name, :email])
-          |> Ecto.Changeset.validate_required([:name, :email])
-        end
-      end
+    def changeset(changeset, attrs) do
+      changeset
+      |> Ecto.Changeset.cast(attrs, [:name, :email])
+      |> Ecto.Changeset.validate_required([:name, :email])
+    end
+  end
+  ```
 
   3. Create a migration for the events table using `Spector.Migration`:
 
-      defmodule MyApp.Repo.Migrations.CreateEvents do
-        use Ecto.Migration
+  ```elixir
+  defmodule MyApp.Repo.Migrations.CreateEvents do
+    use Ecto.Migration
 
-        def up, do: Spector.Migration.up(table: "events")
-        def down, do: Spector.Migration.down(table: "events")
-      end
+    def up, do: Spector.Migration.up(table: "events")
+    def down, do: Spector.Migration.down(table: "events")
+  end
+  ```
 
   ## Usage
 
   Use the Spector functions instead of `Repo.insert/2`, `Repo.update/2`, etc.:
 
-      # Insert a new record
-      {:ok, user} = Spector.insert(MyApp.User, %{name: "Alice", email: "alice@example.com"})
+  ```elixir
+  # Insert a new record
+  {:ok, user} = Spector.insert(MyApp.User, %{name: "Alice", email: "alice@example.com"})
 
-      # Update an existing record
-      {:ok, user} = Spector.update(user, %{name: "Alice Smith"})
+  # Update an existing record
+  {:ok, user} = Spector.update(user, %{name: "Alice Smith"})
 
-      # Delete a record
-      {:ok, user} = Spector.delete(user)
+  # Delete a record
+  {:ok, user} = Spector.delete(user)
+  ```
 
   Each operation creates an event in the event log, providing a complete history
   of all changes to the record.
@@ -65,7 +73,9 @@ defmodule Spector do
   Beyond insert/update/delete, you can define custom actions for domain-specific
   operations. See `Spector.Evented` for details.
 
-      {:ok, item} = Spector.execute(item, :archive, %{archived_at: DateTime.utc_now()})
+  ```elixir
+  {:ok, item} = Spector.execute(item, :archive, %{archived_at: DateTime.utc_now()})
+  ```
 
   ## Roll Forward
 

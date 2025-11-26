@@ -4,12 +4,14 @@ defmodule Spector.Migration do
 
   ## Basic Usage
 
-      defmodule MyApp.Repo.Migrations.CreateEvents do
-        use Ecto.Migration
+  ```elixir
+  defmodule MyApp.Repo.Migrations.CreateEvents do
+    use Ecto.Migration
 
-        def up, do: Spector.Migration.up(table: "events")
-        def down, do: Spector.Migration.down(table: "events")
-      end
+    def up, do: Spector.Migration.up(table: "events")
+    def down, do: Spector.Migration.down(table: "events")
+  end
+  ```
 
   ## Options
 
@@ -20,8 +22,10 @@ defmodule Spector.Migration do
 
   If using hashed events, include the `:hashed` option:
 
-      def up, do: Spector.Migration.up(table: "events", hashed: true)
-      def down, do: Spector.Migration.down(table: "events")
+  ```elixir
+  def up, do: Spector.Migration.up(table: "events", hashed: true)
+  def down, do: Spector.Migration.down(table: "events")
+  ```
 
   ## Generated Schema
 

@@ -4,12 +4,14 @@ defmodule Spector.Events do
 
   ## Basic Usage
 
-      defmodule MyApp.Events do
-        use Spector.Events,
-          table: "events",
-          schemas: [MyApp.User, MyApp.Post],
-          repo: MyApp.Repo
-      end
+  ```elixir
+  defmodule MyApp.Events do
+    use Spector.Events,
+      table: "events",
+      schemas: [MyApp.User, MyApp.Post],
+      repo: MyApp.Repo
+  end
+  ```
 
   ## Options
 
@@ -25,7 +27,9 @@ defmodule Spector.Events do
   auto-indexed starting from 0. To ensure stability when adding/removing schemas,
   you can specify explicit indexes:
 
-      schemas: [MyApp.User, MyApp.Post, {MyApp.Comment, 10}]
+  ```elixir
+  schemas: [MyApp.User, MyApp.Post, {MyApp.Comment, 10}]
+  ```
 
   In this example, `User` gets index 0, `Post` gets index 1, and `Comment` gets
   index 10. This allows you to remove `Post` later without breaking existing data.
@@ -34,11 +38,13 @@ defmodule Spector.Events do
 
   Enable `hashed: true` to create a cryptographic hash chain linking all events:
 
-      use Spector.Events,
-        table: "events",
-        schemas: [MyApp.User],
-        repo: MyApp.Repo,
-        hashed: true
+  ```elixir
+  use Spector.Events,
+    table: "events",
+    schemas: [MyApp.User],
+    repo: MyApp.Repo,
+    hashed: true
+  ```
 
   Each event's hash includes the previous event's hash, creating a tamper-evident
   chain. Any modification to historical events will break the chain.
@@ -51,11 +57,13 @@ defmodule Spector.Events do
   When refactoring action names, use aliases to maintain backwards compatibility
   with existing events in the database:
 
-      use Spector.Events,
-        table: "events",
-        schemas: [MyApp.Item],
-        repo: MyApp.Repo,
-        aliases: [soft_delete: :archive]  # soft_delete uses archive's hash
+  ```elixir
+  use Spector.Events,
+    table: "events",
+    schemas: [MyApp.Item],
+    repo: MyApp.Repo,
+    aliases: [soft_delete: :archive]  # soft_delete uses archive's hash
+  ```
 
   This allows renaming `:archive` to `:soft_delete` in your code while still
   reading old events that used `:archive`.

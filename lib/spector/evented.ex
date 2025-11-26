@@ -4,20 +4,22 @@ defmodule Spector.Evented do
 
   ## Basic Usage
 
-      defmodule MyApp.User do
-        use Spector.Evented, events: MyApp.Events
-        use Ecto.Schema
+  ```elixir
+  defmodule MyApp.User do
+    use Spector.Evented, events: MyApp.Events
+    use Ecto.Schema
 
-        schema "users" do
-          field :name, :string
-        end
+    schema "users" do
+      field :name, :string
+    end
 
-        def changeset(changeset, attrs) do
-          changeset
-          |> Ecto.Changeset.cast(attrs, [:name])
-          |> Ecto.Changeset.validate_required([:name])
-        end
-      end
+    def changeset(changeset, attrs) do
+      changeset
+      |> Ecto.Changeset.cast(attrs, [:name])
+      |> Ecto.Changeset.validate_required([:name])
+    end
+  end
+  ```
 
   ## Options
 
@@ -31,56 +33,62 @@ defmodule Spector.Evented do
   Beyond the built-in `:insert`, `:update`, and `:delete` actions, you can define
   custom actions for domain-specific operations:
 
-      defmodule MyApp.Item do
-        use Spector.Evented,
-          events: MyApp.Events,
-          actions: [:archive, :restore]
+  ```elixir
+  defmodule MyApp.Item do
+    use Spector.Evented,
+      events: MyApp.Events,
+      actions: [:archive, :restore]
 
-        # Handle the archive action
-        def changeset(changeset, attrs) when changeset.action == :archive do
-          changeset
-          |> Ecto.Changeset.change(archived_at: attrs[:archived_at])
-        end
+    # Handle the archive action
+    def changeset(changeset, attrs) when changeset.action == :archive do
+      changeset
+      |> Ecto.Changeset.change(archived_at: attrs[:archived_at])
+    end
 
-        # Handle other actions
-        def changeset(changeset, attrs) do
-          changeset
-          |> Ecto.Changeset.cast(attrs, [:name, :value])
-        end
-      end
+    # Handle other actions
+    def changeset(changeset, attrs) do
+      changeset
+      |> Ecto.Changeset.cast(attrs, [:name, :value])
+    end
+  end
+  ```
 
   Execute custom actions with `Spector.execute/3`:
 
-      {:ok, item} = Spector.execute(item, :archive, %{archived_at: DateTime.utc_now()})
+  ```elixir
+  {:ok, item} = Spector.execute(item, :archive, %{archived_at: DateTime.utc_now()})
+  ```
 
   ## Schema Versioning
 
   When you change your schema (add/remove/rename fields), increment the version
   and handle migrations in your changeset:
 
-      defmodule MyApp.User do
-        # Version 0: had :title field
-        # Version 1: renamed :title to :name
-        use Spector.Evented, events: MyApp.Events, version: 1
+  ```elixir
+  defmodule MyApp.User do
+    # Version 0: had :title field
+    # Version 1: renamed :title to :name
+    use Spector.Evented, events: MyApp.Events, version: 1
 
-        schema "users" do
-          field :name, :string
-        end
+    schema "users" do
+      field :name, :string
+    end
 
-        # Migrate v0 events (with :title) to v1 (with :name)
-        def changeset(changeset, attrs) when version_is(attrs, 0) do
-          attrs = Map.put(attrs, "name", attrs["title"])
-          do_changeset(changeset, attrs)
-        end
+    # Migrate v0 events (with :title) to v1 (with :name)
+    def changeset(changeset, attrs) when version_is(attrs, 0) do
+      attrs = Map.put(attrs, "name", attrs["title"])
+      do_changeset(changeset, attrs)
+    end
 
-        def changeset(changeset, attrs), do: do_changeset(changeset, attrs)
+    def changeset(changeset, attrs), do: do_changeset(changeset, attrs)
 
-        defp do_changeset(changeset, attrs) do
-          changeset
-          |> Ecto.Changeset.cast(attrs, [:name])
-          |> Ecto.Changeset.validate_required([:name])
-        end
-      end
+    defp do_changeset(changeset, attrs) do
+      changeset
+      |> Ecto.Changeset.cast(attrs, [:name])
+      |> Ecto.Changeset.validate_required([:name])
+    end
+  end
+  ```
 
   The `version_is/2` and `version_in/2` guards help you handle different versions.
   When events are replayed, old events are passed through the changeset with their
