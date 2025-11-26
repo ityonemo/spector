@@ -47,6 +47,11 @@ mix format            # Format code
 
 **NEVER call Mix functions at runtime** - use conditional compilation or module attributes instead.
 
+## Code Style
+
+- **NO grouped aliases** - Don't use `alias X.{Y, Z}`. This is only for iex. Use separate alias statements instead.
+- **alias over import** - Use `alias Ecto.Changeset` instead of `import Ecto.Changeset`. Call functions explicitly as `Changeset.cast/3`.
+
 ## Library Rules
 
 - **NO config files** - users configure in their application

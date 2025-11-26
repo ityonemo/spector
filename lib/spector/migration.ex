@@ -19,7 +19,7 @@ defmodule Spector.Migration do
 
     create table(table, primary_key: false) do
       add :id, :binary_id, primary_key: true
-      add :parent_id, :binary_id
+      add :parent_id, references(table, type: :binary_id), null: false
       add :payload, :map
       add :schema, :integer, null: false
       add :action, :integer, null: false

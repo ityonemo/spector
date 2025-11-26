@@ -12,6 +12,9 @@ Application.put_env(:spector, SpectorTest.Repo,
 # Create and migrate the database
 {:ok, _} = Ecto.Adapters.Postgres.ensure_all_started(SpectorTest.Repo, :temporary)
 
+# Drop and recreate DB to ensure clean state
+_ = SpectorTest.Repo.__adapter__().storage_down(SpectorTest.Repo.config())
+
 case SpectorTest.Repo.__adapter__().storage_up(SpectorTest.Repo.config()) do
   :ok -> :ok
   {:error, :already_up} -> :ok

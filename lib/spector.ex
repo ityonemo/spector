@@ -1,36 +1,35 @@
 defmodule Spector do
   @moduledoc """
   CQRS-style event sourcing for Ecto schemas.
-
-  Use this module to define an event log table:
-
-      defmodule MyApp.Events do
-        use Spector, table: "events", schemas: [MyApp.User, MyApp.Post]
-      end
   """
 
-  @action_values [insert: 1, update: 2, delete: 3]
+  alias Ecto.Changeset
 
-  defmacro __using__(opts) do
-    table = Keyword.fetch!(opts, :table)
-    schemas = Keyword.fetch!(opts, :schemas)
-    # TODO: This auto-indexing scheme needs to be replaced with explicit mappings
-    # to allow adding/removing/reordering schemas without breaking existing data
-    schema_values = Enum.with_index(schemas, 1)
+  def insert(schema, attrs) do
+    events = schema.__spector__(:events)
+    repo = events.__spector__(:repo)
 
-    quote do
-      use Ecto.Schema
+    changeset =
+      schema
+      |> struct!()
+      |> Changeset.change()
+      |> Map.replace!(:action, :insert)
+      |> schema.changeset(attrs)
 
-      @primary_key {:id, UUIDv7, autogenerate: true}
+    if changeset.valid? do
+      repo.transact(fn ->
+        id = UUIDv7.generate()
 
-      schema unquote(table) do
-        field :parent_id, UUIDv7
-        field :payload, :map
-        field :schema, Ecto.Enum, values: unquote(schema_values)
-        field :action, Ecto.Enum, values: unquote(@action_values)
+        event_attrs = %{id: id, parent_id: id, schema: schema, action: :insert, payload: attrs}
+        object_changeset = Changeset.put_change(changeset, :id, id)
 
-        timestamps(type: :utc_datetime_usec)
-      end
+        with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
+             {:ok, object} <- repo.insert(object_changeset) do
+          {:ok, object}
+        end
+      end)
+    else
+      {:error, changeset}
     end
   end
 end
