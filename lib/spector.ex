@@ -1,6 +1,77 @@
 defmodule Spector do
   @moduledoc """
   CQRS-style event sourcing for Ecto schemas.
+
+  Spector provides event sourcing capabilities for Ecto schemas, recording all
+  changes as immutable events in a separate event log table. This enables full
+  audit trails, temporal queries, and the ability to replay history.
+
+  ## Setup
+
+  1. Define your event log table using `Spector.Events`:
+
+      defmodule MyApp.Events do
+        use Spector.Events,
+          table: "events",
+          schemas: [MyApp.User, MyApp.Post],
+          repo: MyApp.Repo
+      end
+
+  2. Mark your schemas as evented using `Spector.Evented`:
+
+      defmodule MyApp.User do
+        use Spector.Evented, events: MyApp.Events
+        use Ecto.Schema
+
+        schema "users" do
+          field :name, :string
+          field :email, :string
+        end
+
+        def changeset(changeset, attrs) do
+          changeset
+          |> Ecto.Changeset.cast(attrs, [:name, :email])
+          |> Ecto.Changeset.validate_required([:name, :email])
+        end
+      end
+
+  3. Create a migration for the events table using `Spector.Migration`:
+
+      defmodule MyApp.Repo.Migrations.CreateEvents do
+        use Ecto.Migration
+
+        def up, do: Spector.Migration.up(table: "events")
+        def down, do: Spector.Migration.down(table: "events")
+      end
+
+  ## Usage
+
+  Use the Spector functions instead of `Repo.insert/2`, `Repo.update/2`, etc.:
+
+      # Insert a new record
+      {:ok, user} = Spector.insert(MyApp.User, %{name: "Alice", email: "alice@example.com"})
+
+      # Update an existing record
+      {:ok, user} = Spector.update(user, %{name: "Alice Smith"})
+
+      # Delete a record
+      {:ok, user} = Spector.delete(user)
+
+  Each operation creates an event in the event log, providing a complete history
+  of all changes to the record.
+
+  ## Custom Actions
+
+  Beyond insert/update/delete, you can define custom actions for domain-specific
+  operations. See `Spector.Evented` for details.
+
+      {:ok, item} = Spector.execute(item, :archive, %{archived_at: DateTime.utc_now()})
+
+  ## Roll Forward
+
+  When updating records, Spector "rolls forward" from the event log to reconstruct
+  the current state. This ensures consistency even if the in-memory object is stale,
+  and allows schema version migrations to be applied during replay.
   """
 
   alias Ecto.Changeset

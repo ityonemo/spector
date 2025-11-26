@@ -1,50 +1,95 @@
 defmodule Spector.Events do
   @moduledoc """
-  Define an event log table.
+  Define an event log table for storing events from evented schemas.
+
+  ## Basic Usage
 
       defmodule MyApp.Events do
-        use Spector.Events, table: "events", schemas: [MyApp.User, MyApp.Post]
+        use Spector.Events,
+          table: "events",
+          schemas: [MyApp.User, MyApp.Post],
+          repo: MyApp.Repo
       end
+
+  ## Options
+
+  * `:table` (required) - The database table name for storing events
+  * `:schemas` (required) - List of schemas that will log events to this table
+  * `:repo` (required) - The Ecto repo module to use for database operations
+  * `:hashed` - Enable hash chain integrity (default: `false`). See "Hash Chain Integrity" below
+  * `:aliases` - Action aliases for refactoring. See "Action Aliases" below
+
+  ## Schema Indexing
+
+  Schemas are stored as integers in the database. By default, schemas are
+  auto-indexed starting from 0. To ensure stability when adding/removing schemas,
+  you can specify explicit indexes:
+
+      schemas: [MyApp.User, MyApp.Post, {MyApp.Comment, 10}]
+
+  In this example, `User` gets index 0, `Post` gets index 1, and `Comment` gets
+  index 10. This allows you to remove `Post` later without breaking existing data.
+
+  ## Hash Chain Integrity
+
+  Enable `hashed: true` to create a cryptographic hash chain linking all events:
+
+      use Spector.Events,
+        table: "events",
+        schemas: [MyApp.User],
+        repo: MyApp.Repo,
+        hashed: true
+
+  Each event's hash includes the previous event's hash, creating a tamper-evident
+  chain. Any modification to historical events will break the chain.
+
+  **Note:** Hash chain integrity requires PostgreSQL due to the use of
+  `LOCK TABLE ... IN EXCLUSIVE MODE` for serialization.
+
+  ## Action Aliases
+
+  When refactoring action names, use aliases to maintain backwards compatibility
+  with existing events in the database:
+
+      use Spector.Events,
+        table: "events",
+        schemas: [MyApp.Item],
+        repo: MyApp.Repo,
+        aliases: [soft_delete: :archive]  # soft_delete uses archive's hash
+
+  This allows renaming `:archive` to `:soft_delete` in your code while still
+  reading old events that used `:archive`.
+
+  ## Generated Functions
+
+  Using this module generates the following functions:
+
+  * `changeset/1`, `changeset/2` - Build an event changeset
+  * `list_by_parent_id/1` - List all events for a given record ID
+  * `backtrace/1` - List all events up to and including a given event
+  * `__spector__/1` - Internal metadata accessor
   """
 
   @base_actions [insert: 1, update: 2, delete: 3]
 
-  defp index_schemas(schemas) do
+  defp index_schemas(schemas, caller) do
     elem(for schema <- schemas, reduce: {[], 0} do
       {acc, index} ->
         case schema do
           {_, too_low} when index > too_low ->
             raise ArgumentError, "Schema #{inspect(schema)} has an index lower than a previous schema"
-          {_mod, index} = s ->
-            {acc ++ [s], index + 1}
+          {mod, index} ->
+            {acc ++ [{Macro.expand(mod, caller), index}], index + 1}
           mod ->
-            {acc ++ [{mod, index}], index + 1}
+            {acc ++ [{Macro.expand(mod, caller), index}], index + 1}
         end
     end, 0)
   end
 
-  defp validate_and_get_actions({mod, _}, caller), do: validate_and_get_actions(mod, caller)
-
-  defp validate_and_get_actions(mod, caller) do
-    mod = Macro.expand(mod, caller)
-    events_module = caller.module
-
-    if not match?({:module, ^mod}, Code.ensure_loaded(mod)) do
-      raise CompileError,
-        description: "Schema #{inspect(mod)} is not loaded or does not exist"
-    end
-
-    if not function_exported?(mod, :__spector__, 1) do
-      raise CompileError,
-        description: "Schema #{inspect(mod)} does not `use Spector.Evented`"
-    end
-
-    if mod.__spector__(:events) != events_module do
-      raise CompileError,
-        description: "#{inspect(mod)} does not declare #{inspect(events_module)} as its events module"
-    end
-
-    mod.__spector__(:actions)
+  @doc false
+  def action_value(action, aliases) do
+    value = Keyword.get(aliases, action, action)
+    {action, :erlang.phash2(value)}
   end
 
   defmacro __using__(opts) do
@@ -52,20 +97,34 @@ defmodule Spector.Events do
     schemas = Keyword.fetch!(opts, :schemas)
     repo = Keyword.fetch!(opts, :repo)
     hashed = Keyword.get(opts, :hashed, false)
-    schema_values = index_schemas(schemas)
+    aliases = Keyword.get(opts, :aliases, [])
+    schema_values = index_schemas(schemas, __CALLER__)
 
-    # Collect custom actions from all schemas and validate
-    custom_actions =
-      schemas
-      |> Enum.flat_map(&validate_and_get_actions(&1, __CALLER__))
-      |> Enum.uniq()
-      |> Enum.with_index(4)
+    requires = for mod <- Keyword.keys(schema_values) do
+      quote do
+        require unquote(mod)
 
-    action_values = @base_actions ++ custom_actions
+        if unquote(mod).__spector__(:events) != __MODULE__ do
+          raise CompileError,
+            description: "#{inspect(unquote(mod))} does not declare #{inspect(__MODULE__)} as its events module"
+        end
+      end
+    end
 
     quote do
       use Ecto.Schema
       alias Ecto.Changeset
+
+      unquote_splicing(requires)
+
+      # Collect custom actions from all schemas
+      custom_actions =
+        unquote(Keyword.keys(schema_values))
+        |> Enum.flat_map(fn mod -> mod.__spector__(:actions) end)
+        |> Enum.uniq()
+        |> Enum.map(&unquote(__MODULE__).action_value(&1, unquote(aliases)))
+
+      action_values = unquote(@base_actions) ++ custom_actions
 
       @primary_key {:id, UUIDv7, autogenerate: true}
 
@@ -76,7 +135,7 @@ defmodule Spector.Events do
         belongs_to :parent, __MODULE__, type: UUIDv7
         field :payload, :map
         field :schema, Ecto.Enum, values: unquote(schema_values)
-        field :action, Ecto.Enum, values: unquote(action_values)
+        field :action, Ecto.Enum, values: action_values
 
         if unquote(hashed) do
           field :hash, :binary
