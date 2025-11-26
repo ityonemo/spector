@@ -93,12 +93,19 @@ defmodule Spector do
 
   defp maybe_add_hash(events, event_attrs) do
     if events.__spector__(:hashed) do
+      lock_table(events)
       prev_hash = get_last_hash(events)
       hash = compute_hash(prev_hash, event_attrs)
       Map.put(event_attrs, :hash, hash)
     else
       event_attrs
     end
+  end
+
+  defp lock_table(events) do
+    repo = events.__spector__(:repo)
+    table = events.__schema__(:source)
+    Ecto.Adapters.SQL.query!(repo, "LOCK TABLE #{table} IN EXCLUSIVE MODE")
   end
 
   defp get_last_hash(events) do
