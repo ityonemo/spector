@@ -17,9 +17,22 @@ defmodule Spector.Events do
     # to allow adding/removing/reordering schemas without breaking existing data
     schema_values = Enum.with_index(schemas, 1)
 
+    requirements = for schema <- schemas do
+      quote do
+        require unquote(schema)
+
+        if unquote(schema).__spector__(:events) != __MODULE__ do
+          raise CompileError,
+            description: "#{inspect(unquote(schema))} does not declare #{inspect(__MODULE__)} as its events module"
+        end
+      end
+    end
+
     quote do
       use Ecto.Schema
       alias Ecto.Changeset
+
+      unquote_splicing(requirements)
 
       @primary_key {:id, UUIDv7, autogenerate: true}
 
