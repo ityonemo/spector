@@ -1,6 +1,12 @@
 # Spector
 
-**TODO: Add description**
+CQRS-style event sourcing for Ecto schemas.
+
+## Database Support
+
+Spector works with any database supported by Ecto for basic functionality.
+
+**Note:** Hashed event tables (`hashed: true`) currently require PostgreSQL. The hash chain integrity feature uses `LOCK TABLE ... IN EXCLUSIVE MODE` which is PostgreSQL-specific. SQLite and other databases are not yet supported for hashed tables.
 
 ## Installation
 
