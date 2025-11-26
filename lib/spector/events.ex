@@ -9,41 +9,63 @@ defmodule Spector.Events do
 
   @base_actions [insert: 1, update: 2, delete: 3]
 
+  defp index_schemas(schemas) do
+    elem(for schema <- schemas, reduce: {[], 0} do
+      {acc, index} ->
+        case schema do
+          {_, too_low} when index > too_low ->
+            raise ArgumentError, "Schema #{inspect(schema)} has an index lower than a previous schema"
+          {_mod, index} = s ->
+            {acc ++ [s], index + 1}
+          mod ->
+            {acc ++ [{mod, index}], index + 1}
+        end
+    end, 0)
+  end
+
+  defp validate_and_get_actions({mod, _}, caller), do: validate_and_get_actions(mod, caller)
+
+  defp validate_and_get_actions(mod, caller) do
+    mod = Macro.expand(mod, caller)
+    events_module = caller.module
+
+    if not match?({:module, ^mod}, Code.ensure_loaded(mod)) do
+      raise CompileError,
+        description: "Schema #{inspect(mod)} is not loaded or does not exist"
+    end
+
+    if not function_exported?(mod, :__spector__, 1) do
+      raise CompileError,
+        description: "Schema #{inspect(mod)} does not `use Spector.Evented`"
+    end
+
+    if mod.__spector__(:events) != events_module do
+      raise CompileError,
+        description: "#{inspect(mod)} does not declare #{inspect(events_module)} as its events module"
+    end
+
+    mod.__spector__(:actions)
+  end
+
   defmacro __using__(opts) do
     table = Keyword.fetch!(opts, :table)
     schemas = Keyword.fetch!(opts, :schemas)
     repo = Keyword.fetch!(opts, :repo)
     hashed = Keyword.get(opts, :hashed, false)
-    # TODO: This auto-indexing scheme needs to be replaced with explicit mappings
-    # to allow adding/removing/reordering schemas without breaking existing data
-    schema_values = Enum.with_index(schemas, 1)
+    schema_values = index_schemas(schemas)
 
-    # Collect custom actions from all schemas
+    # Collect custom actions from all schemas and validate
     custom_actions =
       schemas
-      |> Enum.map(&Macro.expand(&1, __CALLER__))
-      |> Enum.flat_map(fn schema -> schema.__spector__(:actions) end)
+      |> Enum.flat_map(&validate_and_get_actions(&1, __CALLER__))
       |> Enum.uniq()
       |> Enum.with_index(4)
 
     action_values = @base_actions ++ custom_actions
 
-    requirements = for schema <- schemas do
-      quote do
-        require unquote(schema)
-
-        if unquote(schema).__spector__(:events) != __MODULE__ do
-          raise CompileError,
-            description: "#{inspect(unquote(schema))} does not declare #{inspect(__MODULE__)} as its events module"
-        end
-      end
-    end
-
     quote do
       use Ecto.Schema
       alias Ecto.Changeset
-
-      unquote_splicing(requirements)
 
       @primary_key {:id, UUIDv7, autogenerate: true}
 
