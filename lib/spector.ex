@@ -76,9 +76,13 @@ defmodule Spector do
 
   alias Ecto.Changeset
 
+  defp get_repo(schema, events) do
+    schema.__spector__(:repo) || events.__spector__(:repo)
+  end
+
   def insert(schema, attrs) do
     events = schema.__spector__(:events)
-    repo = events.__spector__(:repo)
+    repo = get_repo(schema, events)
     version = schema.__spector__(:version)
     attrs = Map.put(attrs, :version, version)
 
@@ -114,7 +118,7 @@ defmodule Spector do
   def delete(object) do
     schema = object.__struct__
     events = schema.__spector__(:events)
-    repo = events.__spector__(:repo)
+    repo = get_repo(schema, events)
 
     repo.transact(fn ->
       id = UUIDv7.generate()
@@ -132,7 +136,7 @@ defmodule Spector do
   def execute(object, action, attrs) do
     schema = object.__struct__
     events = schema.__spector__(:events)
-    repo = events.__spector__(:repo)
+    repo = get_repo(schema, events)
     parent_id = object.id
     version = schema.__spector__(:version)
     attrs = Map.put(attrs, :version, version)

@@ -22,6 +22,7 @@ defmodule Spector.Evented do
   ## Options
 
   * `:events` (required) - The events module (defined with `Spector.Events`)
+  * `:repo` - Override the repo for this schema's table (default: uses events repo)
   * `:version` - Schema version for migrations (default: `0`). See "Schema Versioning" below
   * `:actions` - List of custom action atoms (default: `[]`). See "Custom Actions" below
 
@@ -120,6 +121,7 @@ defmodule Spector.Evented do
 
   defmacro __using__(opts) do
     events = Keyword.fetch!(opts, :events)
+    repo = Keyword.get(opts, :repo)
     version = Keyword.get(opts, :version, 0)
     actions = Keyword.get(opts, :actions, [])
 
@@ -129,6 +131,7 @@ defmodule Spector.Evented do
       @primary_key {:id, UUIDv7, autogenerate: false}
 
       def __spector__(:events), do: unquote(events)
+      def __spector__(:repo), do: unquote(repo)
       def __spector__(:version), do: unquote(version)
       def __spector__(:actions), do: unquote(actions)
     end
