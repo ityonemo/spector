@@ -74,6 +74,17 @@ end
 {:ok, user} = Spector.delete(user)
 ```
 
+## How It Works
+
+When you update or execute an action on a record, Spector "rolls forward" by replaying all stored events through your schema's `changeset/2` function. This means:
+
+- Your changeset function handles both new operations AND historical replay
+- Schema migrations happen automatically during replay (using version guards)
+- The current state is always reconstructed from the event log
+- Stale in-memory objects are never a problem
+
+This design lets you evolve your schema over time while maintaining full compatibility with historical events.
+
 ## Features
 
 ### Custom Actions
@@ -158,4 +169,4 @@ Full documentation is available at [HexDocs](https://hexdocs.pm/spector).
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See LICENSE for details.

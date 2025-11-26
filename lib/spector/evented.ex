@@ -91,8 +91,10 @@ defmodule Spector.Evented do
   ```
 
   The `version_is/2` and `version_in/2` guards help you handle different versions.
-  When events are replayed, old events are passed through the changeset with their
-  original version, allowing you to migrate data on the fly.
+
+  During updates, Spector replays all stored events through your `changeset/2`
+  function. Old events retain their original version, so your version guards
+  automatically migrate historical data during replay.
 
   ## Generated Functions
 

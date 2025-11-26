@@ -79,9 +79,13 @@ defmodule Spector do
 
   ## Roll Forward
 
-  When updating records, Spector "rolls forward" from the event log to reconstruct
-  the current state. This ensures consistency even if the in-memory object is stale,
-  and allows schema version migrations to be applied during replay.
+  When updating records, Spector "rolls forward" by replaying all stored events
+  through your schema's `changeset/2` function. This means:
+
+  - Your changeset function handles both new operations AND historical replay
+  - Schema migrations happen automatically during replay (using version guards)
+  - The current state is always reconstructed from the event log
+  - Stale in-memory objects are never a problem
   """
 
   alias Ecto.Changeset
