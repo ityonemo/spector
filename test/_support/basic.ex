@@ -1,7 +1,7 @@
 defmodule SpectorTest.Basic do
   use Spector.Evented, events: SpectorTest.Event
   use Ecto.Schema
-  import Ecto.Changeset
+  alias Ecto.Changeset
 
   schema "basic" do
     field :name, :string
@@ -10,7 +10,7 @@ defmodule SpectorTest.Basic do
 
   def changeset(struct, attrs) do
     struct
-    |> cast(attrs, [:name, :value])
-    |> validate_required([:name])
+    |> Changeset.cast(attrs, [:name, :value])
+    |> Changeset.validate_required([:name])
   end
 end

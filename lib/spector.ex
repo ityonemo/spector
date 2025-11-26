@@ -8,6 +8,8 @@ defmodule Spector do
   def insert(schema, attrs) do
     events = schema.__spector__(:events)
     repo = events.__spector__(:repo)
+    version = schema.__spector__(:version)
+    attrs = Map.put(attrs, :version, version)
 
     changeset =
       schema
@@ -38,6 +40,8 @@ defmodule Spector do
     events = schema.__spector__(:events)
     repo = events.__spector__(:repo)
     parent_id = object.id
+    version = schema.__spector__(:version)
+    attrs = Map.put(attrs, :version, version)
 
     # Roll forward from events to get current state
     changeset = schema
