@@ -37,10 +37,11 @@ defmodule Spector do
     schema = object.__struct__
     events = schema.__spector__(:events)
     repo = events.__spector__(:repo)
+    parent_id = object.id
 
-    changeset =
-      object
-      |> Changeset.change()
+    # Roll forward from events to get current state
+    changeset = schema
+      |> roll_forward(events, parent_id)
       |> Map.replace!(:action, :update)
       |> schema.changeset(attrs)
 
@@ -48,7 +49,7 @@ defmodule Spector do
       repo.transact(fn ->
         id = UUIDv7.generate()
 
-        event_attrs = %{id: id, parent_id: object.id, schema: schema, action: :update, payload: attrs}
+        event_attrs = %{id: id, parent_id: parent_id, schema: schema, action: :update, payload: attrs}
 
         with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
              {:ok, updated} <- repo.update(changeset) do
@@ -58,5 +59,18 @@ defmodule Spector do
     else
       {:error, changeset}
     end
+  end
+
+  defp roll_forward(schema, events, parent_id) do
+    entries = events.list_by_parent_id(parent_id)
+
+    schema
+    |> struct!(id: parent_id)
+    |> Changeset.change()
+    |> then(&Enum.reduce(entries, &1, fn event, changeset ->
+      changeset
+      |> Map.replace!(:action, event.action)
+      |> schema.changeset(event.payload)
+    end))
   end
 end

@@ -40,6 +40,11 @@ defmodule Spector.Events do
         |> Changeset.validate_required([:id, :parent_id, :schema, :action])
         |> Changeset.foreign_key_constraint(:parent_id)
       end
+
+      def list_by_parent_id(parent_id) do
+        import Ecto.Query
+        unquote(repo).all(from e in __MODULE__, where: e.parent_id == ^parent_id, order_by: e.id)
+      end
     end
   end
 end
