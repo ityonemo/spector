@@ -94,6 +94,17 @@ defmodule Spector do
     schema.__spector__(:repo) || events.__spector__(:repo)
   end
 
+  @doc """
+  Insert a new record, creating an event in the event log.
+
+  Returns `{:ok, struct}` on success or `{:error, changeset}` on failure.
+
+  ## Example
+
+      {:ok, user} = Spector.insert(MyApp.User, %{name: "Alice", email: "alice@example.com"})
+
+  The inserted struct will have a new UUIDv7 `id` assigned.
+  """
   def insert(schema, attrs) do
     events = schema.__spector__(:events)
     repo = get_repo(schema, events)
@@ -149,10 +160,33 @@ defmodule Spector do
     end
   end
 
+  @doc """
+  Update an existing record, creating an event in the event log.
+
+  This is a convenience function that calls `execute(object, :update, attrs)`.
+
+  Returns `{:ok, struct}` on success or `{:error, changeset}` on failure.
+
+  ## Example
+
+      {:ok, user} = Spector.update(user, %{name: "Alice Smith"})
+  """
   def update(object, attrs) do
     execute(object, :update, attrs)
   end
 
+  @doc """
+  Retrieve the current state of a record by replaying its events.
+
+  Returns the struct if found, or `nil` if no events exist for the given ID.
+
+  This is useful for embedded schemas (without database tables) or when you
+  want to reconstruct state purely from the event log.
+
+  ## Example
+
+      user = Spector.get(MyApp.User, "019ac640-dfc0-7407-8238-39a9c45e8813")
+  """
   def get(schema, parent_id) do
     events_module = schema.__spector__(:events)
 
@@ -168,6 +202,18 @@ defmodule Spector do
   defp or_crash(nil), do: raise("No such record")
   defp or_crash(changeset), do: changeset
 
+  @doc """
+  Delete a record, creating a delete event in the event log.
+
+  Returns `{:ok, struct}` on success or `{:error, changeset}` on failure.
+
+  The delete event is recorded in the event log before the record is removed
+  from the database, providing a complete audit trail.
+
+  ## Example
+
+      {:ok, user} = Spector.delete(user)
+  """
   def delete(object) do
     schema = object.__struct__
     events = schema.__spector__(:events)
@@ -187,6 +233,26 @@ defmodule Spector do
     end)
   end
 
+  @doc """
+  Execute an action on a record, creating an event in the event log.
+
+  This is the general-purpose function for applying any action to a record,
+  including custom actions defined in the schema's `:actions` option.
+
+  Returns `{:ok, struct}` on success or `{:error, changeset}` on failure.
+
+  The function rolls forward from the event log to reconstruct current state,
+  applies the action through the schema's `changeset/2` function, and records
+  the new event.
+
+  ## Example
+
+      # Using a custom :archive action
+      {:ok, item} = Spector.execute(item, :archive, %{archived_at: DateTime.utc_now()})
+
+      # The :update action (same as Spector.update/2)
+      {:ok, user} = Spector.execute(user, :update, %{name: "New Name"})
+  """
   def execute(object, action, attrs) do
     schema = object.__struct__
     events_module = schema.__spector__(:events)

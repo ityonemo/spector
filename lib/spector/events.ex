@@ -23,6 +23,31 @@ defmodule Spector.Events do
   * `:shard` - Sharding function name (atom). See "Table Sharding" below
   * `:links` - List of link associations for many-to-many relationships. See "Event Links" below
 
+  ## Table Sharding
+
+  For high-volume event logs, you can shard events across multiple tables using
+  the `:shard` option. Specify a function name (atom) that takes a `parent_id`
+  and returns the table name:
+
+  ```elixir
+  defmodule MyApp.Events do
+    use Spector.Events,
+      table: "events",  # base table name (used for schema definition)
+      schemas: [MyApp.User],
+      repo: MyApp.Repo,
+      shard: :shard_table
+
+    def shard_table(parent_id) do
+      # Shard based on first byte of UUID
+      <<first_byte, _rest::binary>> = parent_id
+      "events_\#{rem(first_byte, 4)}"
+    end
+  end
+  ```
+
+  You'll need to create migrations for each shard table. The sharding function
+  must be deterministic - the same `parent_id` must always map to the same table.
+
   ## Event Links
 
   Enable event linking with the `:links` option to create many-to-many relationships
@@ -93,15 +118,60 @@ defmodule Spector.Events do
   This allows renaming `:archive` to `:soft_delete` in your code while still
   reading old events that used `:archive`.
 
+  ## Compilation Dependencies
+
+  Using this module creates a compilation dependency on all schema modules
+  listed in the `:schemas` option. This means changes to those schema modules
+  will trigger recompilation of the events module.
+
   ## Generated Functions
 
   Using this module generates the following functions:
 
   * `changeset/1`, `changeset/2` - Build an event changeset
-  * `list_by_parent_id/1` - List all events for a given record ID
+  * `list_by_parent_id/2` - List all events for a given record ID and schema
   * `backtrace/1` - List all events up to and including a given event
+  * `table_for/1` - Get the table name for a given parent_id
+  * `shard/2` - Apply sharding to a changeset
   * `__spector__/1` - Internal metadata accessor
   """
+
+  @doc """
+  Build an event changeset from attributes.
+  """
+  @callback changeset(attrs :: map()) :: Ecto.Changeset.t()
+
+  @doc """
+  Build an event changeset from an existing struct and attributes.
+  """
+  @callback changeset(struct :: struct(), attrs :: map()) :: Ecto.Changeset.t()
+
+  @doc """
+  List all events for a given parent_id and schema, ordered by id.
+  """
+  @callback list_by_parent_id(parent_id :: binary(), schema :: module()) :: [struct()]
+
+  @doc """
+  List all events up to and including a given event, ordered by id.
+
+  Useful for reconstructing state at a specific point in time.
+  """
+  @callback backtrace(entry :: struct()) :: [struct()]
+
+  @doc """
+  Get the table name for a given parent_id.
+
+  For non-sharded tables, returns the configured table name.
+  For sharded tables, calls the shard function to determine the table.
+  """
+  @callback table_for(parent_id :: binary()) :: String.t()
+
+  @doc """
+  Apply sharding to a changeset based on the parent_id.
+
+  Updates the changeset's data source to the appropriate shard table.
+  """
+  @callback shard(changeset :: Ecto.Changeset.t(), parent_id :: binary()) :: Ecto.Changeset.t()
 
   @base_actions [insert: 1, update: 2, delete: 3]
 
@@ -156,6 +226,8 @@ defmodule Spector.Events do
       end
 
     quote do
+      @behaviour Spector.Events
+
       use Ecto.Schema
       alias Ecto.Changeset
 

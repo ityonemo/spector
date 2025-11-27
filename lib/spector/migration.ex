@@ -16,8 +16,23 @@ defmodule Spector.Migration do
   ## Options
 
   * `:table` (required) - The database table name for the events
+  * `:shards` - List of table names for sharded setups (creates multiple tables)
   * `:hashed` - Add a `hash` column for hash chain integrity (default: `false`)
   * `:links` - List of link tables to create: `[{"table_name", :foreign_key}, ...]`
+
+  ## With Table Sharding
+
+  For sharded event tables, use `:shards` to create multiple tables:
+
+  ```elixir
+  def up do
+    Spector.Migration.up(shards: ["events_0", "events_1", "events_2", "events_3"])
+  end
+
+  def down do
+    Spector.Migration.down(shards: ["events_0", "events_1", "events_2", "events_3"])
+  end
+  ```
 
   ## With Hash Chain Integrity
 
@@ -27,6 +42,29 @@ defmodule Spector.Migration do
   def up, do: Spector.Migration.up(table: "events", hashed: true)
   def down, do: Spector.Migration.down(table: "events")
   ```
+
+  ## With Event Links
+
+  To create join tables for event linking (e.g., ancestry tracking):
+
+  ```elixir
+  def up do
+    Spector.Migration.up(
+      table: "events",
+      links: [{"event_ancestors", :ancestor_id}]
+    )
+  end
+
+  def down do
+    Spector.Migration.down(
+      table: "events",
+      links: [{"event_ancestors", :ancestor_id}]
+    )
+  end
+  ```
+
+  Each link tuple creates a join table with `event_id` and the specified foreign key,
+  along with indexes for efficient queries.
 
   ## Generated Schema
 
@@ -45,45 +83,98 @@ defmodule Spector.Migration do
 
   use Ecto.Migration
 
+  @doc """
+  Create the event table(s) and any link tables.
+
+  Use `:table` for a single table or `:shards` for sharded setups.
+
+  See module documentation for available options.
+  """
   def up(opts) do
-    table = Keyword.fetch!(opts, :table)
+    tables = Keyword.get(opts, :shards) || [Keyword.fetch!(opts, :table)]
+    hashed = Keyword.get(opts, :hashed, false)
 
-    create table(table, primary_key: false) do
-      add(:id, :binary_id, primary_key: true)
-      add(:parent_id, references(table, type: :binary_id), null: false)
-      add(:payload, :map)
-      add(:schema, :integer, null: false)
-      add(:action, :integer, null: false)
+    for table <- tables do
+      create table(table, primary_key: false) do
+        add(:id, :binary_id, primary_key: true)
+        add(:parent_id, references(table, type: :binary_id), null: false)
+        add(:payload, :map)
+        add(:schema, :integer, null: false)
+        add(:action, :integer, null: false)
 
-      if Keyword.get(opts, :hashed, false) do
-        add(:hash, :binary)
+        if hashed do
+          add(:hash, :binary)
+        end
+
+        timestamps(type: :utc_datetime_usec)
       end
 
-      timestamps(type: :utc_datetime_usec)
+      create(index(table, [:schema]))
+      create(index(table, [:parent_id]))
     end
 
-    create(index(table, [:schema]))
-    create(index(table, [:parent_id]))
+    events_table = List.first(tables)
 
-    for {link_table, foreign_key} <- Keyword.get(opts, :links, []) do
-      create table(link_table, primary_key: false) do
-        add(:event_id, references(table, type: :binary_id, on_delete: :delete_all), null: false)
-        add(foreign_key, references(table, type: :binary_id, on_delete: :delete_all), null: false)
-      end
-
-      create(index(link_table, [:event_id]))
-      create(index(link_table, [foreign_key]))
-      create(unique_index(link_table, [:event_id, foreign_key]))
+    for link <- Keyword.get(opts, :links, []) do
+      link_up(events_table, link)
     end
   end
 
-  def down(opts) do
-    table = Keyword.fetch!(opts, :table)
+  @doc """
+  Drop the event table(s) and any link tables.
 
-    for {link_table, _foreign_key} <- Keyword.get(opts, :links, []) do
-      drop(table(link_table))
+  Pass the same options used in `up/1` to ensure link tables are also dropped.
+  """
+  def down(opts) do
+    for link <- Keyword.get(opts, :links, []) do
+      link_down(link)
     end
 
-    drop(table(table))
+    tables = Keyword.get(opts, :shards) || [Keyword.fetch!(opts, :table)]
+
+    for table <- tables do
+      drop(table(table))
+    end
+  end
+
+  @doc """
+  Create a link table for many-to-many event relationships.
+
+  Use this to add link tables in a separate migration after the events table exists.
+
+  ## Parameters
+
+  * `events_table` - The events table this link table references
+  * `{link_table, foreign_key}` - The link table name and foreign key column
+
+  ## Example
+
+      Spector.Migration.link_up("events", {"event_ancestors", :ancestor_id})
+  """
+  def link_up(events_table, {link_table, foreign_key}) do
+    create table(link_table, primary_key: false) do
+      add(:event_id, references(events_table, type: :binary_id, on_delete: :delete_all),
+        null: false
+      )
+
+      add(foreign_key, references(events_table, type: :binary_id, on_delete: :delete_all),
+        null: false
+      )
+    end
+
+    create(index(link_table, [:event_id]))
+    create(index(link_table, [foreign_key]))
+    create(unique_index(link_table, [:event_id, foreign_key]))
+  end
+
+  @doc """
+  Drop a link table.
+
+  ## Example
+
+      Spector.Migration.link_down({"event_ancestors", :ancestor_id})
+  """
+  def link_down({link_table, _foreign_key}) do
+    drop(table(link_table))
   end
 end

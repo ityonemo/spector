@@ -2,7 +2,7 @@
 
 CQRS-style event sourcing for Ecto schemas.
 
-Spector records all changes to your Ecto schemas as immutable events in a separate event log table. This enables full audit trails, temporal queries, and the ability to replay history.
+Spector records all changes to your Ecto schemas as events in a separate event log table. This enables full audit trails, temporal queries, and the ability to replay history. For tamper-evident logs, enable optional hash chain integrity.
 
 ## Installation
 
@@ -11,7 +11,7 @@ Add `spector` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:spector, "~> 0.1.0"}
+    {:spector, "~> 0.2.0"}
   ]
 end
 ```
