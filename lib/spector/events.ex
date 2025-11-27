@@ -301,7 +301,7 @@ defmodule Spector.Events do
         unquote(repo).all(
           from(e in {table, __MODULE__},
             where: e.parent_id == ^parent_id and e.schema == ^schema,
-            order_by: e.id
+            order_by: [asc: e.inserted_at]
           )
         )
       end

@@ -76,6 +76,13 @@ defmodule Spector do
   This design lets you evolve your schema over time while maintaining full
   compatibility with historical events.
 
+  ## Guides
+
+  For complete examples of building applications with Spector:
+
+  - [Building an AI Chat Log](AI_chat.md) - Conversation branching with tree-structured message history
+  - [Building a Basic Chat](basic_chat.md) - Simple chat with edit history tracking
+
   ## Features
 
   ### Custom Actions
@@ -148,6 +155,27 @@ defmodule Spector do
     aliases: [soft_delete: :archive]
   ```
 
+  ## Reserved Attributes
+
+  Spector injects reserved attributes into the `attrs` map passed to your
+  `changeset/2` function. These provide metadata about the event being applied:
+
+  - `:__version__` - The schema version when the event was created. Use with
+    `version_is/2` guards to handle schema migrations during replay.
+
+  - `:__event_id__` - The unique ID of the event being applied. Use
+    `Spector.changeset_put_event_id/3` to assign this to a field:
+
+    ```elixir
+    def changeset(message, attrs) do
+      message
+      |> Ecto.Changeset.cast(attrs, [:content])
+      |> Spector.changeset_put_event_id(attrs)  # puts :__event_id__ into :id field
+    end
+    ```
+
+  These attributes are also stored in the event payload for reference.
+
   ## Database Support
 
   Spector works with any database supported by Ecto for basic functionality.
@@ -178,7 +206,12 @@ defmodule Spector do
     events = schema.__spector__(:events)
     repo = get_repo(schema, events)
     version = schema.__spector__(:version)
-    attrs = Map.put(attrs, :__version__, version)
+    id = UUIDv7.generate()
+
+    attrs =
+      attrs
+      |> Map.put(:__version__, version)
+      |> Map.put(:__event_id__, id)
 
     changeset =
       schema
@@ -189,8 +222,6 @@ defmodule Spector do
 
     if changeset.valid? do
       repo.transact(fn ->
-        id = UUIDv7.generate()
-
         event_attrs = %{id: id, parent_id: id, schema: schema, action: :insert, payload: attrs}
         event_attrs = maybe_add_hash(events, event_attrs, id)
         object_changeset = Changeset.put_change(changeset, :id, id)
@@ -328,7 +359,12 @@ defmodule Spector do
     repo = get_repo(schema, events_module)
     parent_id = object.id
     version = schema.__spector__(:version)
-    attrs = Map.put(attrs, :__version__, version)
+    id = UUIDv7.generate()
+
+    attrs =
+      attrs
+      |> Map.put(:__version__, version)
+      |> Map.put(:__event_id__, id)
 
     # Roll forward from events to get current state
     previous_events = events_module.list_by_parent_id(parent_id, schema)
@@ -342,8 +378,6 @@ defmodule Spector do
 
     if changeset.valid? do
       repo.transact(fn ->
-        id = UUIDv7.generate()
-
         event_attrs = %{
           id: id,
           parent_id: parent_id,
@@ -368,6 +402,39 @@ defmodule Spector do
       end)
     else
       {:error, changeset}
+    end
+  end
+
+  @doc """
+  Assigns the event ID from attrs to a field on the changeset.
+
+  If no `:__event_id__` is present in attrs, the changeset is returned unchanged.
+
+  ## Parameters
+
+    - `changeset` - The Ecto changeset to modify
+    - `attrs` - The attrs map passed to `changeset/2` (contains `:__event_id__`)
+    - `field` - The field to assign the event ID to (default: `:id`)
+
+  ## Example
+
+      def changeset(message, attrs) do
+        message
+        |> Ecto.Changeset.cast(attrs, [:content, :role])
+        |> Spector.changeset_put_event_id(attrs)
+        |> Ecto.Changeset.validate_required([:id, :content, :role])
+      end
+  """
+  def changeset_put_event_id(changeset, attrs, field \\ :id) do
+    case attrs do
+      %{"__event_id__" => event_id} ->
+        Changeset.put_change(changeset, field, event_id)
+
+      %{__event_id__: event_id} ->
+        Changeset.put_change(changeset, field, event_id)
+
+      _ ->
+        changeset
     end
   end
 
@@ -437,7 +504,7 @@ defmodule Spector do
       &Enum.reduce(events, &1, fn %{parent_id: ^parent_id} = event, changeset ->
         changeset
         |> Map.replace!(:action, event.action)
-        |> schema.changeset(event.payload)
+        |> schema.changeset(Map.put(event.payload, "__event_id__", event.id))
       end)
     )
   end

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- `__event_id__` reserved attribute passed to changesets for tracking event IDs
+- `Spector.changeset_put_event_id/3` helper to assign event ID to a changeset field
+- Documentation for reserved attributes (`__version__` and `__event_id__`)
+- Fixed event ordering to use `inserted_at` timestamp for reliable chronological order
+- Added guides for building chat applications (AI chat with branching, basic chat with edit history)
+
 ## 0.2.0
 
 - Event links for many-to-many relationships between events (e.g., tree/ancestry tracking)

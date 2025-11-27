@@ -11,7 +11,7 @@ Add `spector` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:spector, "~> 0.2.0"}
+    {:spector, "~> 0.3.0"}
   ]
 end
 ```
@@ -156,6 +156,15 @@ Maintain backwards compatibility when renaming actions:
 use Spector.Events,
   aliases: [soft_delete: :archive]
 ```
+
+### Chat and Conversation Logs
+
+Spector includes features specifically designed for chat-log style applications:
+
+- **Event links** for tracking message ancestry and edit history
+- **Embedded schemas** for state reconstructed purely from events
+
+See the [AI Chat Guide](guides/AI_chat.md) for conversation branching and the [Basic Chat Guide](guides/basic_chat.md) for edit history tracking.
 
 ## Database Support
 

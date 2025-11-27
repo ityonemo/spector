@@ -1,7 +1,7 @@
 defmodule Spector.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
   @source_url "https://github.com/ityonemo/spector"
 
   def project do
@@ -44,16 +44,19 @@ defmodule Spector.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
+      files: ~w(lib guides .formatter.exs mix.exs README.md LICENSE)
     ]
   end
 
   defp docs do
     [
       main: "Spector",
-      extras: ["README.md"],
+      extras: ["README.md", "guides/AI_chat.md", "guides/basic_chat.md"],
       source_ref: "v#{@version}",
-      source_url: @source_url
+      source_url: @source_url,
+      groups_for_extras: [
+        Guides: ~r/guides\/.*/
+      ]
     ]
   end
 end
