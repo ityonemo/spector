@@ -19,7 +19,7 @@ defmodule SpectorTest.VersionedTest do
         parent_id: id,
         schema: Versioned,
         action: :insert,
-        payload: %{title: "Old Title", value: 42, version: 0}
+        payload: %{title: "Old Title", value: 42, __version__: 0}
       })
 
       # Also insert the object directly (as if it was created with v0)
@@ -37,7 +37,7 @@ defmodule SpectorTest.VersionedTest do
       assert %{
                parent_id: ^id,
                action: :update,
-               payload: %{"value" => 100, "version" => 1}
+               payload: %{"value" => 100, "__version__" => 1}
              } = Enum.find(events, &(&1.action == :update))
     end
   end

@@ -112,8 +112,10 @@ defmodule Spector.Evented do
   """
   defmacro version_in(attrs, range) do
     quote do
-      (is_map_key(unquote(attrs), "version") and (:erlang.map_get("version", unquote(attrs)) in unquote(range))) or
-      (is_map_key(unquote(attrs), :version) and (:erlang.map_get(:version, unquote(attrs)) in unquote(range)))
+      (is_map_key(unquote(attrs), "__version__") and
+         :erlang.map_get("__version__", unquote(attrs)) in unquote(range)) or
+        (is_map_key(unquote(attrs), :__version__) and
+           :erlang.map_get(:__version__, unquote(attrs)) in unquote(range))
     end
   end
 
@@ -124,8 +126,10 @@ defmodule Spector.Evented do
   """
   defmacro version_is(attrs, version) do
     quote do
-      (is_map_key(unquote(attrs), "version") and :erlang.map_get("version", unquote(attrs)) == unquote(version)) or
-        (is_map_key(unquote(attrs), :version) and :erlang.map_get(:version, unquote(attrs)) == unquote(version))
+      (is_map_key(unquote(attrs), "__version__") and
+         :erlang.map_get("__version__", unquote(attrs)) == unquote(version)) or
+        (is_map_key(unquote(attrs), :__version__) and
+           :erlang.map_get(:__version__, unquote(attrs)) == unquote(version))
     end
   end
 
