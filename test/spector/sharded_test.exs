@@ -28,7 +28,7 @@ defmodule SpectorTest.ShardedTest do
       other_table = if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
 
       # list_by_parent_id should find the event in the correct shard
-      assert [%{parent_id: ^id}] = ShardedEvent.list_by_parent_id(id)
+      assert [%{parent_id: ^id}] = ShardedEvent.list_by_parent_id(id, Sharded)
       assert [%{parent_id: ^id}] = query_shard(shard_table)
       assert [] = query_shard(other_table)
     end

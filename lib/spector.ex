@@ -115,9 +115,12 @@ defmodule Spector do
         event_attrs = maybe_add_hash(events, event_attrs, id)
         object_changeset = Changeset.put_change(changeset, :id, id)
 
-        with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
-             {:ok, object} <- repo.insert(object_changeset) do
-          {:ok, object}
+        case repo.insert(events.changeset(event_attrs)) do
+          {:ok, _event} ->
+            do_insert(object_changeset, repo, schema)
+
+          {:error, event_changeset} ->
+            {:error, event_changeset}
         end
       end)
     else
@@ -125,9 +128,41 @@ defmodule Spector do
     end
   end
 
+  defp do_insert(changeset, repo, schema) do
+    if schema.__schema__(:source) do
+      repo.insert(changeset)
+    else
+      Changeset.apply_action(changeset, :insert)
+    end
+  end
+
+  defp do_update(changeset, repo, schema) do
+    if schema.__schema__(:source) do
+      update_changeset = Map.replace!(changeset, :action, :update)
+      repo.update(update_changeset)
+    else
+      Changeset.apply_action(changeset, :update)
+    end
+  end
+
   def update(object, attrs) do
     execute(object, :update, attrs)
   end
+
+  def get(schema, parent_id) do
+    events_module = schema.__spector__(:events)
+
+    parent_id
+    |> events_module.list_by_parent_id(schema)
+    |> roll_forward()
+    |> and_apply(:get)
+  end
+
+  defp and_apply(nil, _action), do: nil
+  defp and_apply(changeset, action), do: Changeset.apply_action!(changeset, action)
+
+  defp or_crash(nil), do: raise "No such record"
+  defp or_crash(changeset), do: changeset
 
   def delete(object) do
     schema = object.__struct__
@@ -150,16 +185,18 @@ defmodule Spector do
 
   def execute(object, action, attrs) do
     schema = object.__struct__
-    events = schema.__spector__(:events)
-    repo = get_repo(schema, events)
+    events_module = schema.__spector__(:events)
+    repo = get_repo(schema, events_module)
     parent_id = object.id
     version = schema.__spector__(:version)
     attrs = Map.put(attrs, :__version__, version)
 
     # Roll forward from events to get current state
     changeset =
-      schema
-      |> roll_forward(events, parent_id)
+      parent_id
+      |> events_module.list_by_parent_id(schema)
+      |> roll_forward()
+      |> or_crash()
       |> Map.replace!(:action, action)
       |> schema.changeset(attrs)
 
@@ -175,13 +212,14 @@ defmodule Spector do
           payload: attrs
         }
 
-        event_attrs = maybe_add_hash(events, event_attrs, parent_id)
-        # Reset action to :update for repo.update/2
-        update_changeset = Map.replace!(changeset, :action, :update)
+        event_attrs = maybe_add_hash(events_module, event_attrs, parent_id)
 
-        with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
-             {:ok, updated} <- repo.update(update_changeset) do
-          {:ok, updated}
+        case repo.insert(events_module.changeset(event_attrs)) do
+          {:ok, _event} ->
+            do_update(changeset, repo, schema)
+
+          {:error, event_changeset} ->
+            {:error, event_changeset}
         end
       end)
     else
@@ -233,14 +271,16 @@ defmodule Spector do
     :crypto.hash(:sha256, data)
   end
 
-  defp roll_forward(schema, events, parent_id) do
-    entries = events.list_by_parent_id(parent_id)
+  # roll_forward should ONLY be called when all of the events belong to the same schema
+  # and all events should have the same parent_id.
+  defp roll_forward([]), do: nil
 
+  defp roll_forward(events = [%{schema: schema, parent_id: parent_id} | _]) do
     schema
     |> struct!(id: parent_id)
     |> Changeset.change()
     |> then(
-      &Enum.reduce(entries, &1, fn event, changeset ->
+      &Enum.reduce(events, &1, fn %{parent_id: ^parent_id} = event, changeset ->
         changeset
         |> Map.replace!(:action, event.action)
         |> schema.changeset(event.payload)

@@ -186,10 +186,10 @@ defmodule Spector.Events do
         |> then(&shard(&1, Changeset.get_field(&1, :parent_id)))
       end
 
-      def list_by_parent_id(parent_id) do
+      def list_by_parent_id(parent_id, schema) do
         import Ecto.Query
         table = table_for(parent_id)
-        unquote(repo).all(from e in {table, __MODULE__}, where: e.parent_id == ^parent_id, order_by: e.id)
+        unquote(repo).all(from e in {table, __MODULE__}, where: e.parent_id == ^parent_id and e.schema == ^schema, order_by: e.id)
       end
 
       def backtrace(entry) do
