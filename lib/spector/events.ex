@@ -48,6 +48,9 @@ defmodule Spector.Events do
   You'll need to create migrations for each shard table. The sharding function
   must be deterministic - the same `parent_id` must always map to the same table.
 
+  When combining sharding with hash chain integrity (`hashed: true`), each shard
+  table maintains its own independent hash chain.
+
   ## Event Links
 
   Enable event linking with the `:links` option to create many-to-many relationships
