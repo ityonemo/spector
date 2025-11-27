@@ -5,8 +5,8 @@ defmodule SpectorTest.Versioned do
   alias Ecto.Changeset
 
   schema "versioned" do
-    field :name, :string
-    field :value, :integer
+    field(:name, :string)
+    field(:value, :integer)
   end
 
   def changeset(changeset, attrs) when version_in(attrs, 0..0) do

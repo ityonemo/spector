@@ -3,7 +3,7 @@ defmodule SpectorTest.Orphan do
   use Ecto.Schema
 
   schema "orphans" do
-    field :name, :string
+    field(:name, :string)
   end
 
   def changeset(struct, attrs), do: Ecto.Changeset.cast(struct, attrs, [:name])

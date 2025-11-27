@@ -5,8 +5,8 @@ defmodule SpectorTest.Hashed do
   alias Ecto.Changeset
 
   schema "hashed" do
-    field :name, :string
-    field :value, :integer
+    field(:name, :string)
+    field(:value, :integer)
   end
 
   def changeset(changeset, attrs) do

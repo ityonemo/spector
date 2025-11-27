@@ -12,7 +12,8 @@ defmodule SpectorTest.BasicTest do
 
   describe "Spector.insert/2" do
     test "inserts both the event and the object" do
-      assert {:ok, %{id: id, name: "Bob", value: 99}} = Spector.insert(Basic, %{name: "Bob", value: 99})
+      assert {:ok, %{id: id, name: "Bob", value: 99}} =
+               Spector.insert(Basic, %{name: "Bob", value: 99})
 
       # Event was inserted with matching id
       assert %{

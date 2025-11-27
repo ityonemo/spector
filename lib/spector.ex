@@ -98,7 +98,7 @@ defmodule Spector do
     events = schema.__spector__(:events)
     repo = get_repo(schema, events)
     version = schema.__spector__(:version)
-    attrs = Map.put(attrs, :version, version)
+    attrs = Map.put(attrs, :__version__, version)
 
     changeset =
       schema
@@ -112,7 +112,7 @@ defmodule Spector do
         id = UUIDv7.generate()
 
         event_attrs = %{id: id, parent_id: id, schema: schema, action: :insert, payload: attrs}
-        event_attrs = maybe_add_hash(events, event_attrs)
+        event_attrs = maybe_add_hash(events, event_attrs, id)
         object_changeset = Changeset.put_change(changeset, :id, id)
 
         with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
@@ -133,12 +133,13 @@ defmodule Spector do
     schema = object.__struct__
     events = schema.__spector__(:events)
     repo = get_repo(schema, events)
+    parent_id = object.id
 
     repo.transact(fn ->
       id = UUIDv7.generate()
 
-      event_attrs = %{id: id, parent_id: object.id, schema: schema, action: :delete, payload: %{}}
-      event_attrs = maybe_add_hash(events, event_attrs)
+      event_attrs = %{id: id, parent_id: parent_id, schema: schema, action: :delete, payload: %{}}
+      event_attrs = maybe_add_hash(events, event_attrs, parent_id)
 
       with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
            {:ok, deleted} <- repo.delete(object) do
@@ -153,10 +154,11 @@ defmodule Spector do
     repo = get_repo(schema, events)
     parent_id = object.id
     version = schema.__spector__(:version)
-    attrs = Map.put(attrs, :version, version)
+    attrs = Map.put(attrs, :__version__, version)
 
     # Roll forward from events to get current state
-    changeset = schema
+    changeset =
+      schema
       |> roll_forward(events, parent_id)
       |> Map.replace!(:action, action)
       |> schema.changeset(attrs)
@@ -165,8 +167,15 @@ defmodule Spector do
       repo.transact(fn ->
         id = UUIDv7.generate()
 
-        event_attrs = %{id: id, parent_id: parent_id, schema: schema, action: action, payload: attrs}
-        event_attrs = maybe_add_hash(events, event_attrs)
+        event_attrs = %{
+          id: id,
+          parent_id: parent_id,
+          schema: schema,
+          action: action,
+          payload: attrs
+        }
+
+        event_attrs = maybe_add_hash(events, event_attrs, parent_id)
         # Reset action to :update for repo.update/2
         update_changeset = Map.replace!(changeset, :action, :update)
 
@@ -180,10 +189,10 @@ defmodule Spector do
     end
   end
 
-  defp maybe_add_hash(events, event_attrs) do
+  defp maybe_add_hash(events, event_attrs, parent_id) do
     if events.__spector__(:hashed) do
-      lock_table(events)
-      prev_hash = get_last_hash(events)
+      lock_table(events, parent_id)
+      prev_hash = get_last_hash(events, parent_id)
       hash = compute_hash(prev_hash, event_attrs)
       Map.put(event_attrs, :hash, hash)
     else
@@ -191,17 +200,25 @@ defmodule Spector do
     end
   end
 
-  defp lock_table(events) do
+  defp lock_table(events, parent_id) do
     repo = events.__spector__(:repo)
-    table = events.__schema__(:source)
+
+    table =
+      if shard_fn = events.__spector__(:shard) do
+        apply(events, shard_fn, [parent_id])
+      else
+        events.__schema__(:source)
+      end
+
     Ecto.Adapters.SQL.query!(repo, "LOCK TABLE #{table} IN EXCLUSIVE MODE")
   end
 
-  defp get_last_hash(events) do
+  defp get_last_hash(events, parent_id) do
     import Ecto.Query
     repo = events.__spector__(:repo)
+    table = events.table_for(parent_id)
 
-    case repo.one(from e in events, order_by: [desc: e.id], limit: 1, select: e.hash) do
+    case repo.one(from e in {table, events}, order_by: [desc: e.id], limit: 1, select: e.hash) do
       nil -> nil
       hash -> hash
     end
@@ -222,10 +239,12 @@ defmodule Spector do
     schema
     |> struct!(id: parent_id)
     |> Changeset.change()
-    |> then(&Enum.reduce(entries, &1, fn event, changeset ->
-      changeset
-      |> Map.replace!(:action, event.action)
-      |> schema.changeset(event.payload)
-    end))
+    |> then(
+      &Enum.reduce(entries, &1, fn event, changeset ->
+        changeset
+        |> Map.replace!(:action, event.action)
+        |> schema.changeset(event.payload)
+      end)
+    )
   end
 end

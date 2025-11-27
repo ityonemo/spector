@@ -15,7 +15,9 @@ defmodule SpectorTest.CustomTest do
       object = Repo.get!(Custom, id)
 
       now = DateTime.utc_now()
-      assert {:ok, %{id: ^id, archived_at: archived_at}} = Spector.execute(object, :archive, %{archived_at: now})
+
+      assert {:ok, %{id: ^id, archived_at: archived_at}} =
+               Spector.execute(object, :archive, %{archived_at: now})
 
       assert archived_at == DateTime.truncate(now, :microsecond)
 

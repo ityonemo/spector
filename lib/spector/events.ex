@@ -20,6 +20,7 @@ defmodule Spector.Events do
   * `:repo` (required) - The Ecto repo module to use for database operations
   * `:hashed` - Enable hash chain integrity (default: `false`). See "Hash Chain Integrity" below
   * `:aliases` - Action aliases for refactoring. See "Action Aliases" below
+  * `:shard` - Sharding function name (atom). See "Table Sharding" below
 
   ## Schema Indexing
 
@@ -81,17 +82,23 @@ defmodule Spector.Events do
   @base_actions [insert: 1, update: 2, delete: 3]
 
   defp index_schemas(schemas, caller) do
-    elem(for schema <- schemas, reduce: {[], 0} do
-      {acc, index} ->
-        case schema do
-          {_, too_low} when index > too_low ->
-            raise ArgumentError, "Schema #{inspect(schema)} has an index lower than a previous schema"
-          {mod, index} ->
-            {acc ++ [{Macro.expand(mod, caller), index}], index + 1}
-          mod ->
-            {acc ++ [{Macro.expand(mod, caller), index}], index + 1}
-        end
-    end, 0)
+    elem(
+      for schema <- schemas, reduce: {[], 0} do
+        {acc, index} ->
+          case schema do
+            {_, too_low} when index > too_low ->
+              raise ArgumentError,
+                    "Schema #{inspect(schema)} has an index lower than a previous schema"
+
+            {mod, index} ->
+              {acc ++ [{Macro.expand(mod, caller), index}], index + 1}
+
+            mod ->
+              {acc ++ [{Macro.expand(mod, caller), index}], index + 1}
+          end
+      end,
+      0
+    )
   end
 
   @doc false
@@ -106,18 +113,22 @@ defmodule Spector.Events do
     repo = Keyword.fetch!(opts, :repo)
     hashed = Keyword.get(opts, :hashed, false)
     aliases = Keyword.get(opts, :aliases, [])
+    shard = Keyword.get(opts, :shard)
     schema_values = index_schemas(schemas, __CALLER__)
+    hash_field = List.wrap(if hashed, do: :hash)
 
-    requires = for mod <- Keyword.keys(schema_values) do
-      quote do
-        require unquote(mod)
+    requires =
+      for mod <- Keyword.keys(schema_values) do
+        quote do
+          require unquote(mod)
 
-        if unquote(mod).__spector__(:events) != __MODULE__ do
-          raise CompileError,
-            description: "#{inspect(unquote(mod))} does not declare #{inspect(__MODULE__)} as its events module"
+          if unquote(mod).__spector__(:events) != __MODULE__ do
+            raise CompileError,
+              description:
+                "#{inspect(unquote(mod))} does not declare #{inspect(__MODULE__)} as its events module"
+          end
         end
       end
-    end
 
     quote do
       use Ecto.Schema
@@ -138,44 +149,53 @@ defmodule Spector.Events do
 
       def __spector__(:repo), do: unquote(repo)
       def __spector__(:hashed), do: unquote(hashed)
+      def __spector__(:shard), do: unquote(shard)
+
+      if unquote(shard) do
+        def shard(changeset, parent_id) do
+          %{changeset | data: Ecto.put_meta(changeset.data, source: unquote(shard)(parent_id))}
+        end
+
+        def table_for(parent_id), do: unquote(shard)(parent_id)
+      else
+        def shard(changeset, _parent_id), do: changeset
+        def table_for(_parent_id), do: unquote(table)
+      end
 
       schema unquote(table) do
-        belongs_to :parent, __MODULE__, type: UUIDv7
-        field :payload, :map
-        field :schema, Ecto.Enum, values: unquote(schema_values)
-        field :action, Ecto.Enum, values: action_values
+        belongs_to(:parent, __MODULE__, type: UUIDv7)
+        field(:payload, :map)
+        field(:schema, Ecto.Enum, values: unquote(schema_values))
+        field(:action, Ecto.Enum, values: action_values)
 
         if unquote(hashed) do
-          field :hash, :binary
+          field(:hash, :binary)
         end
 
         timestamps(type: :utc_datetime_usec)
       end
 
-      if unquote(hashed) do
-        def changeset(struct \\ %__MODULE__{}, attrs) do
-          struct
-          |> Changeset.cast(attrs, [:id, :parent_id, :payload, :schema, :action, :hash])
-          |> Changeset.validate_required([:id, :parent_id, :schema, :action, :hash])
-          |> Changeset.foreign_key_constraint(:parent_id)
-        end
-      else
-        def changeset(struct \\ %__MODULE__{}, attrs) do
-          struct
-          |> Changeset.cast(attrs, [:id, :parent_id, :payload, :schema, :action])
-          |> Changeset.validate_required([:id, :parent_id, :schema, :action])
-          |> Changeset.foreign_key_constraint(:parent_id)
-        end
+      @required_fields ~w[id parent_id schema action]a ++ unquote(hash_field)
+      @all_fields @required_fields ++ ~w[payload]a
+
+      def changeset(struct \\ %__MODULE__{}, attrs) do
+        struct
+        |> Changeset.cast(attrs, @all_fields)
+        |> Changeset.validate_required(@required_fields)
+        |> Changeset.foreign_key_constraint(:parent_id)
+        |> then(&shard(&1, Changeset.get_field(&1, :parent_id)))
       end
 
       def list_by_parent_id(parent_id) do
         import Ecto.Query
-        unquote(repo).all(from e in __MODULE__, where: e.parent_id == ^parent_id, order_by: e.id)
+        table = table_for(parent_id)
+        unquote(repo).all(from e in {table, __MODULE__}, where: e.parent_id == ^parent_id, order_by: e.id)
       end
 
       def backtrace(entry) do
         import Ecto.Query
-        unquote(repo).all(from e in __MODULE__, where: e.parent_id == ^entry.parent_id and e.id <= ^entry.id, order_by: e.id)
+        table = table_for(entry.parent_id)
+        unquote(repo).all(from e in {table, __MODULE__}, where: e.parent_id == ^entry.parent_id and e.id <= ^entry.id, order_by: e.id)
       end
     end
   end

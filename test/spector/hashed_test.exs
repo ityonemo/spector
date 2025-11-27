@@ -16,7 +16,8 @@ defmodule SpectorTest.HashedTest do
       event = Repo.get!(HashedEvent, id)
       assert event.hash != nil
       assert is_binary(event.hash)
-      assert byte_size(event.hash) == 32  # SHA-256
+      # SHA-256
+      assert byte_size(event.hash) == 32
     end
 
     test "hash chain links events together" do

@@ -4,9 +4,9 @@ defmodule SpectorTest.Custom do
   alias Ecto.Changeset
 
   schema "custom" do
-    field :name, :string
-    field :value, :integer
-    field :archived_at, :utc_datetime_usec
+    field(:name, :string)
+    field(:value, :integer)
+    field(:archived_at, :utc_datetime_usec)
   end
 
   def changeset(changeset, attrs) when changeset.action == :archive do
