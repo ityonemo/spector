@@ -2,13 +2,13 @@ defmodule Spector do
   @moduledoc """
   CQRS-style event sourcing for Ecto schemas.
 
-  Spector provides event sourcing capabilities for Ecto schemas, recording all
-  changes as immutable events in a separate event log table. This enables full
-  audit trails, temporal queries, and the ability to replay history.
+  Spector records all changes to your Ecto schemas as events in a separate event
+  log table. This enables full audit trails, temporal queries, and the ability to
+  replay history. For tamper-evident logs, enable optional hash chain integrity.
 
-  ## Setup
+  ## Quick Start
 
-  1. Define your event log table using `Spector.Events`:
+  ### 1. Define an Events Table
 
   ```elixir
   defmodule MyApp.Events do
@@ -19,7 +19,7 @@ defmodule Spector do
   end
   ```
 
-  2. Mark your schemas as evented using `Spector.Evented`:
+  ### 2. Mark Schemas as Evented
 
   ```elixir
   defmodule MyApp.User do
@@ -39,7 +39,7 @@ defmodule Spector do
   end
   ```
 
-  3. Create a migration for the events table using `Spector.Migration`:
+  ### 3. Create Migrations
 
   ```elixir
   defmodule MyApp.Repo.Migrations.CreateEvents do
@@ -50,42 +50,111 @@ defmodule Spector do
   end
   ```
 
-  ## Usage
-
-  Use the Spector functions instead of `Repo.insert/2`, `Repo.update/2`, etc.:
+  ### 4. Use Spector Instead of Repo
 
   ```elixir
-  # Insert a new record
+  # Insert
   {:ok, user} = Spector.insert(MyApp.User, %{name: "Alice", email: "alice@example.com"})
 
-  # Update an existing record
+  # Update
   {:ok, user} = Spector.update(user, %{name: "Alice Smith"})
 
-  # Delete a record
+  # Delete
   {:ok, user} = Spector.delete(user)
   ```
 
-  Each operation creates an event in the event log, providing a complete history
-  of all changes to the record.
+  ## How It Works
 
-  ## Custom Actions
-
-  Beyond insert/update/delete, you can define custom actions for domain-specific
-  operations. See `Spector.Evented` for details.
-
-  ```elixir
-  {:ok, item} = Spector.execute(item, :archive, %{archived_at: DateTime.utc_now()})
-  ```
-
-  ## Roll Forward
-
-  When updating records, Spector "rolls forward" by replaying all stored events
-  through your schema's `changeset/2` function. This means:
+  When you update or execute an action on a record, Spector "rolls forward" by
+  replaying all stored events through your schema's `changeset/2` function. This means:
 
   - Your changeset function handles both new operations AND historical replay
   - Schema migrations happen automatically during replay (using version guards)
   - The current state is always reconstructed from the event log
   - Stale in-memory objects are never a problem
+
+  This design lets you evolve your schema over time while maintaining full
+  compatibility with historical events.
+
+  ## Features
+
+  ### Custom Actions
+
+  Define domain-specific actions beyond insert/update/delete:
+
+  ```elixir
+  defmodule MyApp.Item do
+    use Spector.Evented, events: MyApp.Events, actions: [:archive]
+
+    def changeset(changeset, attrs) when changeset.action == :archive do
+      Ecto.Changeset.change(changeset, archived_at: attrs[:archived_at])
+    end
+
+    def changeset(changeset, attrs) do
+      Ecto.Changeset.cast(changeset, attrs, [:name, :value])
+    end
+  end
+
+  # Execute custom action
+  {:ok, item} = Spector.execute(item, :archive, %{archived_at: DateTime.utc_now()})
+  ```
+
+  ### Schema Versioning
+
+  Handle schema migrations with version guards:
+
+  ```elixir
+  defmodule MyApp.User do
+    use Spector.Evented, events: MyApp.Events, version: 1
+
+    # Migrate v0 events (with :title) to v1 (with :name)
+    def changeset(changeset, attrs) when version_is(attrs, 0) do
+      attrs = Map.put(attrs, "name", attrs["title"])
+      do_changeset(changeset, attrs)
+    end
+
+    def changeset(changeset, attrs), do: do_changeset(changeset, attrs)
+  end
+  ```
+
+  ### Hash Chain Integrity
+
+  Enable tamper-evident event logs with cryptographic hashing:
+
+  ```elixir
+  defmodule MyApp.Events do
+    use Spector.Events,
+      table: "events",
+      schemas: [MyApp.User],
+      repo: MyApp.Repo,
+      hashed: true
+  end
+  ```
+
+  ### Explicit Schema Indexing
+
+  Ensure stability when adding/removing schemas:
+
+  ```elixir
+  schemas: [MyApp.User, MyApp.Post, {MyApp.Comment, 10}]
+  ```
+
+  ### Action Aliases
+
+  Maintain backwards compatibility when renaming actions:
+
+  ```elixir
+  use Spector.Events,
+    aliases: [soft_delete: :archive]
+  ```
+
+  ## Database Support
+
+  Spector works with any database supported by Ecto for basic functionality.
+
+  **Note:** Hashed event tables (`hashed: true`) currently require PostgreSQL.
+  The hash chain integrity feature uses `LOCK TABLE ... IN EXCLUSIVE MODE` which
+  is PostgreSQL-specific.
   """
 
   alias Ecto.Changeset
