@@ -21,6 +21,30 @@ defmodule Spector.Events do
   * `:hashed` - Enable hash chain integrity (default: `false`). See "Hash Chain Integrity" below
   * `:aliases` - Action aliases for refactoring. See "Action Aliases" below
   * `:shard` - Sharding function name (atom). See "Table Sharding" below
+  * `:links` - List of link associations for many-to-many relationships. See "Event Links" below
+
+  ## Event Links
+
+  Enable event linking with the `:links` option to create many-to-many relationships
+  between events:
+
+  ```elixir
+  use Spector.Events,
+    table: "events",
+    schemas: [MyApp.Chat],
+    repo: MyApp.Repo,
+    links: [ancestors: {"event_ancestors", :ancestor_id}]
+  ```
+
+  Each link creates a join table and a `many_to_many` association on the events module.
+  You can define multiple links:
+
+  ```elixir
+  links: [
+    ancestors: {"event_ancestors", :ancestor_id},
+    categories: {"event_categories", :category_id}
+  ]
+  ```
 
   ## Schema Indexing
 
@@ -114,6 +138,7 @@ defmodule Spector.Events do
     hashed = Keyword.get(opts, :hashed, false)
     aliases = Keyword.get(opts, :aliases, [])
     shard = Keyword.get(opts, :shard)
+    links = Keyword.get(opts, :links, [])
     schema_values = index_schemas(schemas, __CALLER__)
     hash_field = List.wrap(if hashed, do: :hash)
 
@@ -150,6 +175,7 @@ defmodule Spector.Events do
       def __spector__(:repo), do: unquote(repo)
       def __spector__(:hashed), do: unquote(hashed)
       def __spector__(:shard), do: unquote(shard)
+      def __spector__(:links), do: unquote(links)
 
       if unquote(shard) do
         def shard(changeset, parent_id) do
@@ -172,6 +198,13 @@ defmodule Spector.Events do
           field(:hash, :binary)
         end
 
+        for {assoc_name, {table, foreign_key}} <- unquote(links) do
+          many_to_many(assoc_name, __MODULE__,
+            join_through: table,
+            join_keys: [{:event_id, :id}, {foreign_key, :id}]
+          )
+        end
+
         timestamps(type: :utc_datetime_usec)
       end
 
@@ -189,13 +222,25 @@ defmodule Spector.Events do
       def list_by_parent_id(parent_id, schema) do
         import Ecto.Query
         table = table_for(parent_id)
-        unquote(repo).all(from e in {table, __MODULE__}, where: e.parent_id == ^parent_id and e.schema == ^schema, order_by: e.id)
+
+        unquote(repo).all(
+          from(e in {table, __MODULE__},
+            where: e.parent_id == ^parent_id and e.schema == ^schema,
+            order_by: e.id
+          )
+        )
       end
 
       def backtrace(entry) do
         import Ecto.Query
         table = table_for(entry.parent_id)
-        unquote(repo).all(from e in {table, __MODULE__}, where: e.parent_id == ^entry.parent_id and e.id <= ^entry.id, order_by: e.id)
+
+        unquote(repo).all(
+          from(e in {table, __MODULE__},
+            where: e.parent_id == ^entry.parent_id and e.id <= ^entry.id,
+            order_by: e.id
+          )
+        )
       end
     end
   end

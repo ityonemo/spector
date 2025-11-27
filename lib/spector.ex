@@ -115,7 +115,11 @@ defmodule Spector do
         event_attrs = maybe_add_hash(events, event_attrs, id)
         object_changeset = Changeset.put_change(changeset, :id, id)
 
-        case repo.insert(events.changeset(event_attrs)) do
+        event_attrs
+        |> events.changeset()
+        |> maybe_prepare_event([], attrs)
+        |> repo.insert()
+        |> case do
           {:ok, _event} ->
             do_insert(object_changeset, repo, schema)
 
@@ -161,7 +165,7 @@ defmodule Spector do
   defp and_apply(nil, _action), do: nil
   defp and_apply(changeset, action), do: Changeset.apply_action!(changeset, action)
 
-  defp or_crash(nil), do: raise "No such record"
+  defp or_crash(nil), do: raise("No such record")
   defp or_crash(changeset), do: changeset
 
   def delete(object) do
@@ -192,9 +196,10 @@ defmodule Spector do
     attrs = Map.put(attrs, :__version__, version)
 
     # Roll forward from events to get current state
+    previous_events = events_module.list_by_parent_id(parent_id, schema)
+
     changeset =
-      parent_id
-      |> events_module.list_by_parent_id(schema)
+      previous_events
       |> roll_forward()
       |> or_crash()
       |> Map.replace!(:action, action)
@@ -214,7 +219,11 @@ defmodule Spector do
 
         event_attrs = maybe_add_hash(events_module, event_attrs, parent_id)
 
-        case repo.insert(events_module.changeset(event_attrs)) do
+        event_attrs
+        |> events_module.changeset()
+        |> maybe_prepare_event(previous_events, attrs)
+        |> repo.insert()
+        |> case do
           {:ok, _event} ->
             do_update(changeset, repo, schema)
 
@@ -238,6 +247,16 @@ defmodule Spector do
     end
   end
 
+  defp maybe_prepare_event(event_changeset, previous_events, attrs) do
+    schema = Changeset.fetch_field!(event_changeset, :schema)
+
+    if function_exported?(schema, :prepare_event, 3) do
+      schema.prepare_event(event_changeset, previous_events, attrs)
+    else
+      event_changeset
+    end
+  end
+
   defp lock_table(events, parent_id) do
     repo = events.__spector__(:repo)
 
@@ -256,7 +275,7 @@ defmodule Spector do
     repo = events.__spector__(:repo)
     table = events.table_for(parent_id)
 
-    case repo.one(from e in {table, events}, order_by: [desc: e.id], limit: 1, select: e.hash) do
+    case repo.one(from(e in {table, events}, order_by: [desc: e.id], limit: 1, select: e.hash)) do
       nil -> nil
       hash -> hash
     end

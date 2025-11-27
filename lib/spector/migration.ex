@@ -17,6 +17,7 @@ defmodule Spector.Migration do
 
   * `:table` (required) - The database table name for the events
   * `:hashed` - Add a `hash` column for hash chain integrity (default: `false`)
+  * `:links` - List of link tables to create: `[{"table_name", :foreign_key}, ...]`
 
   ## With Hash Chain Integrity
 
@@ -63,10 +64,26 @@ defmodule Spector.Migration do
 
     create(index(table, [:schema]))
     create(index(table, [:parent_id]))
+
+    for {link_table, foreign_key} <- Keyword.get(opts, :links, []) do
+      create table(link_table, primary_key: false) do
+        add(:event_id, references(table, type: :binary_id, on_delete: :delete_all), null: false)
+        add(foreign_key, references(table, type: :binary_id, on_delete: :delete_all), null: false)
+      end
+
+      create(index(link_table, [:event_id]))
+      create(index(link_table, [foreign_key]))
+      create(unique_index(link_table, [:event_id, foreign_key]))
+    end
   end
 
   def down(opts) do
     table = Keyword.fetch!(opts, :table)
+
+    for {link_table, _foreign_key} <- Keyword.get(opts, :links, []) do
+      drop(table(link_table))
+    end
+
     drop(table(table))
   end
 end

@@ -15,7 +15,9 @@ defmodule SpectorTest.ShardedTest do
 
       # Determine which shard it should be in and verify
       shard_table = ShardedEvent.shard_for(id)
-      other_table = if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
+
+      other_table =
+        if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
 
       assert [%{parent_id: ^id}] = query_shard(shard_table)
       assert [] = query_shard(other_table)
@@ -25,7 +27,9 @@ defmodule SpectorTest.ShardedTest do
       {:ok, %{id: id}} = Spector.insert(Sharded, %{name: "Alice", value: 1})
 
       shard_table = ShardedEvent.shard_for(id)
-      other_table = if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
+
+      other_table =
+        if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
 
       # list_by_parent_id should find the event in the correct shard
       assert [%{parent_id: ^id}] = ShardedEvent.list_by_parent_id(id, Sharded)
@@ -40,7 +44,9 @@ defmodule SpectorTest.ShardedTest do
       {:ok, _} = Spector.update(object, %{value: 2})
 
       shard_table = ShardedEvent.shard_for(id)
-      other_table = if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
+
+      other_table =
+        if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
 
       # Both events should be in the same shard
       assert [%{action: :insert}, %{action: :update}] = query_shard(shard_table)
@@ -55,7 +61,9 @@ defmodule SpectorTest.ShardedTest do
       {:ok, _} = Spector.update(object, %{value: 3})
 
       shard_table = ShardedEvent.shard_for(id)
-      other_table = if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
+
+      other_table =
+        if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
 
       [insert_event, update1, update2] = query_shard(shard_table)
       assert [] = query_shard(other_table)
@@ -73,7 +81,9 @@ defmodule SpectorTest.ShardedTest do
       {:ok, _} = Spector.delete(object)
 
       shard_table = ShardedEvent.shard_for(id)
-      other_table = if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
+
+      other_table =
+        if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
 
       assert [%{action: :insert}, %{action: :delete}] = query_shard(shard_table)
       assert [] = query_shard(other_table)
