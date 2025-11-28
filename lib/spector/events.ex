@@ -204,6 +204,29 @@ defmodule Spector.Events do
     {action, :erlang.phash2(value)}
   end
 
+  @doc false
+  def validate_primary_key!(schema) do
+    case schema.__schema__(:primary_key) do
+      [] ->
+        raise CompileError,
+          description: "#{inspect(schema)} must have a primary key"
+
+      [pk_field] ->
+        pk_type = schema.__schema__(:type, pk_field)
+
+        if pk_type in [:id, :integer] do
+          raise CompileError,
+            description:
+              "#{inspect(schema)} primary key #{inspect(pk_field)} must be a binary type, got: #{inspect(pk_type)}"
+        end
+
+      pk_fields when is_list(pk_fields) ->
+        raise CompileError,
+          description:
+            "#{inspect(schema)} must have a single primary key, got: #{inspect(pk_fields)}"
+    end
+  end
+
   defmacro __using__(opts) do
     table = Keyword.fetch!(opts, :table)
     schemas = Keyword.fetch!(opts, :schemas)
@@ -225,6 +248,8 @@ defmodule Spector.Events do
               description:
                 "#{inspect(unquote(mod))} does not declare #{inspect(__MODULE__)} as its events module"
           end
+
+          Spector.Events.validate_primary_key!(unquote(mod))
         end
       end
 
