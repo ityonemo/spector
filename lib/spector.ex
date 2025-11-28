@@ -224,7 +224,8 @@ defmodule Spector do
       repo.transact(fn ->
         event_attrs = %{id: id, parent_id: id, schema: schema, action: action, payload: attrs}
         event_attrs = maybe_add_hash(events, event_attrs, id)
-        object_changeset = Changeset.put_change(changeset, :id, id)
+        [pk_field] = schema.__schema__(:primary_key)
+        object_changeset = Changeset.put_change(changeset, pk_field, id)
 
         event_attrs
         |> events.changeset()
@@ -312,8 +313,8 @@ defmodule Spector do
       action like `:import` to trigger different changeset behavior during migration.
 
     * `attr_fn` - A function that takes a record and returns the attributes map to
-      insert (default: extracts all schema fields except `:id`). Use this to transform
-      or augment data during migration.
+      insert (default: extracts all schema fields except the primary key). Use this to
+      transform or augment data during migration.
 
   Returns `{:ok, [struct]}` on success or `{:error, reason}` on failure.
 
@@ -351,11 +352,12 @@ defmodule Spector do
     repo.transact(fn ->
       # Only select records that don't already have events
       events_table = events.__schema__(:source)
+      [pk_field] = schema.__schema__(:primary_key)
 
       query =
         from r in schema,
           left_join: e in ^{events_table, events},
-          on: e.parent_id == r.id and e.schema == ^schema,
+          on: e.parent_id == field(r, ^pk_field) and e.schema == ^schema,
           where: is_nil(e.id)
 
       new_records =
@@ -377,11 +379,12 @@ defmodule Spector do
 
   defp from_record(record) do
     schema = record.__struct__
+    [pk_field] = schema.__schema__(:primary_key)
 
     :fields
     |> schema.__schema__()
     |> then(&Map.take(record, &1))
-    |> Map.delete(:id)
+    |> Map.delete(pk_field)
   end
 
   defp and_apply(nil, _action), do: nil
@@ -406,7 +409,8 @@ defmodule Spector do
     schema = object.__struct__
     events = schema.__spector__(:events)
     repo = get_repo(schema, events)
-    parent_id = object.id
+    [pk_field] = schema.__schema__(:primary_key)
+    parent_id = Map.fetch!(object, pk_field)
 
     repo.transact(fn ->
       id = UUIDv7.generate()
@@ -445,7 +449,8 @@ defmodule Spector do
     schema = object.__struct__
     events_module = schema.__spector__(:events)
     repo = get_repo(schema, events_module)
-    parent_id = object.id
+    [pk_field] = schema.__schema__(:primary_key)
+    parent_id = Map.fetch!(object, pk_field)
     version = schema.__spector__(:version)
     id = UUIDv7.generate()
 
@@ -585,8 +590,10 @@ defmodule Spector do
   defp roll_forward([]), do: nil
 
   defp roll_forward(events = [%{schema: schema, parent_id: parent_id} | _]) do
+    [pk_field] = schema.__schema__(:primary_key)
+
     schema
-    |> struct!(id: parent_id)
+    |> struct!([{pk_field, parent_id}])
     |> Changeset.change()
     |> then(
       &Enum.reduce(events, &1, fn %{parent_id: ^parent_id} = event, changeset ->

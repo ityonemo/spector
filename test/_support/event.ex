@@ -6,7 +6,8 @@ defmodule SpectorTest.Event do
       SpectorTest.Versioned,
       {SpectorTest.Custom, 10},
       SpectorTest.Chat,
-      SpectorTest.BringupSchema
+      SpectorTest.BringupSchema,
+      SpectorTest.CustomPK
     ],
     repo: SpectorTest.Repo
 end
