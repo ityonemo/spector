@@ -318,20 +318,44 @@ defmodule Spector do
 
   Returns `{:ok, [struct]}` on success or `{:error, reason}` on failure.
 
+  ## Timestamps
+
+  By default, bringup creates new records, so `inserted_at` and `updated_at` timestamps
+  will be set to the current time. To preserve original timestamps from the source
+  records, include them in the attr_fn and ensure your changeset accepts them.
+
+  If you don't want your regular changeset to accept timestamp fields, use a custom
+  action like `:import` to handle them separately:
+
+      # Register :import as a custom action
+      use Spector.Evented, events: MyApp.Events, actions: [:import]
+
+      # Handle :import with timestamp support
+      def changeset(changeset, attrs) when changeset.action == :import do
+        changeset
+        |> cast(attrs, [:name, :inserted_at, :updated_at])
+        |> validate_required([:name])
+      end
+
+      # Regular changeset doesn't accept timestamps
+      def changeset(changeset, attrs) do
+        changeset
+        |> cast(attrs, [:name])
+        |> validate_required([:name])
+      end
+
+      # Pass timestamps in attr_fn
+      attr_fn = fn record ->
+        %{name: record.name, inserted_at: record.inserted_at, updated_at: record.updated_at}
+      end
+
+      {:ok, users} = Spector.bringup(MyApp.User, :import, attr_fn)
+
   ## Examples
 
-  Basic usage migrates all untracked records:
+  Basic usage migrates all untracked records (timestamps reset to now):
 
       {:ok, users} = Spector.bringup(MyApp.User)
-
-  Use a custom action to trigger different changeset logic:
-
-      # In your schema, pattern match on the action:
-      # def changeset(changeset, attrs) when changeset.action == :import do
-      #   # special handling for imported records
-      # end
-
-      {:ok, users} = Spector.bringup(MyApp.User, :import)
 
   Use a custom attr_fn to transform data during migration:
 
@@ -342,7 +366,7 @@ defmodule Spector do
         }
       end
 
-      {:ok, users} = Spector.bringup(MyApp.User, :import, attr_fn)
+      {:ok, users} = Spector.bringup(MyApp.User, :insert, attr_fn)
   """
   def bringup(schema, action \\ :insert, attr_fn \\ &from_record/1) do
     import Ecto.Query

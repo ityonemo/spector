@@ -9,6 +9,68 @@ defmodule SpectorTest.BringupTest do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
   end
 
+  describe "Spector.bringup/3 timestamp handling" do
+    test "default bringup resets timestamps to now" do
+      # Insert a record with old timestamps directly
+      past = ~N[2020-01-01 00:00:00]
+
+      {:ok, %{id: old_id}} =
+        Repo.insert(%BringupSchema{
+          id: Ecto.UUID.generate(),
+          name: "Alice",
+          value: 1,
+          inserted_at: past,
+          updated_at: past
+        })
+
+      # Default bringup resets timestamps
+      {:ok, [new_record]} = Spector.bringup(BringupSchema)
+
+      # Original was deleted
+      refute Repo.get(BringupSchema, old_id)
+
+      assert new_record.name == "Alice"
+      # Timestamps should be recent (within last minute)
+      assert NaiveDateTime.diff(NaiveDateTime.utc_now(), new_record.inserted_at, :second) < 60
+      assert NaiveDateTime.diff(NaiveDateTime.utc_now(), new_record.updated_at, :second) < 60
+    end
+
+    test "bringup with :import action and attr_fn preserves timestamps" do
+      # Insert a record with old timestamps directly
+      past = ~N[2020-01-01 00:00:00]
+
+      {:ok, %{id: old_id}} =
+        Repo.insert(%BringupSchema{
+          id: Ecto.UUID.generate(),
+          name: "Bob",
+          value: 2,
+          inserted_at: past,
+          updated_at: past
+        })
+
+      # Use :import action with attr_fn that includes timestamps
+      attr_fn = fn record ->
+        %{
+          name: record.name,
+          value: record.value,
+          inserted_at: record.inserted_at,
+          updated_at: record.updated_at
+        }
+      end
+
+      {:ok, [new_record]} = Spector.bringup(BringupSchema, :import, attr_fn)
+
+      # Original was deleted
+      refute Repo.get(BringupSchema, old_id)
+
+      # Name has "imported_" prefix from the :import changeset
+      assert new_record.name == "imported_Bob"
+      # Timestamps should be preserved
+      assert new_record.inserted_at == past
+      assert new_record.updated_at == past
+    end
+  end
+
   describe "Spector.bringup/3 with custom action" do
     test "uses a different changeset for :import action" do
       # Insert a record directly (simulating pre-Spector data)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- `Spector.bringup/3` to import existing database records into event log
+- `event_log/1` macro to create has_many association for accessing record events
+- Custom primary key support for Evented schemas (override `@primary_key`)
+- Compile-time validation that Evented schema primary keys are binary type
+
 ## 0.3.0
 
 - `__event_id__` reserved attribute passed to changesets for tracking event IDs

@@ -6,12 +6,13 @@ defmodule SpectorTest.BringupSchema do
   schema "basic" do
     field(:name, :string)
     field(:value, :integer)
+    timestamps()
   end
 
-  # For import action, prefix the name with "imported_"
+  # For import action, prefix name and accept timestamps to preserve original values
   def changeset(changeset, attrs) when changeset.action == :import do
     changeset
-    |> Changeset.cast(attrs, [:name, :value])
+    |> Changeset.cast(attrs, [:name, :value, :inserted_at, :updated_at])
     |> Changeset.update_change(:name, &("imported_" <> &1))
     |> Changeset.validate_required([:name])
   end

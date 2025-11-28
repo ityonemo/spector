@@ -7,6 +7,7 @@ defmodule SpectorTest.Basic do
     field(:name, :string)
     field(:value, :integer)
     event_log :log
+    timestamps()
   end
 
   def changeset(changeset, attrs) do

@@ -6,6 +6,7 @@ defmodule SpectorTest.Repo.Migrations.CreateBasic do
       add(:id, :binary_id, primary_key: true)
       add(:name, :string)
       add(:value, :integer)
+      timestamps()
     end
   end
 end
