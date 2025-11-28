@@ -202,7 +202,7 @@ defmodule Spector do
 
   The inserted struct will have a new UUIDv7 `id` assigned.
   """
-  def insert(schema, attrs) do
+  def insert(schema, attrs, action \\ :insert) do
     events = schema.__spector__(:events)
     repo = get_repo(schema, events)
     version = schema.__spector__(:version)
@@ -217,12 +217,12 @@ defmodule Spector do
       schema
       |> struct!()
       |> Changeset.change()
-      |> Map.replace!(:action, :insert)
+      |> Map.replace!(:action, action)
       |> schema.changeset(attrs)
 
     if changeset.valid? do
       repo.transact(fn ->
-        event_attrs = %{id: id, parent_id: id, schema: schema, action: :insert, payload: attrs}
+        event_attrs = %{id: id, parent_id: id, schema: schema, action: action, payload: attrs}
         event_attrs = maybe_add_hash(events, event_attrs, id)
         object_changeset = Changeset.put_change(changeset, :id, id)
 
@@ -245,7 +245,8 @@ defmodule Spector do
 
   defp do_insert(changeset, repo, schema) do
     if schema.__schema__(:source) do
-      repo.insert(changeset)
+      insert_changeset = Map.replace!(changeset, :action, :insert)
+      repo.insert(insert_changeset)
     else
       Changeset.apply_action(changeset, :insert)
     end
@@ -294,6 +295,93 @@ defmodule Spector do
     |> events_module.list_by_parent_id(schema)
     |> roll_forward()
     |> and_apply(:get)
+  end
+
+  @doc """
+  Import existing database records into the event log.
+
+  Reads all rows from the schema's table and migrates each to Spector management:
+  deletes the original record and creates a new one with a UUIDv7 ID and
+  corresponding event. The entire operation runs in a single transaction.
+
+  Records that are already tracked by Spector (have existing events) are skipped.
+
+  ## Options
+
+    * `action` - The action to use for the event (default: `:insert`). Use a custom
+      action like `:import` to trigger different changeset behavior during migration.
+
+    * `attr_fn` - A function that takes a record and returns the attributes map to
+      insert (default: extracts all schema fields except `:id`). Use this to transform
+      or augment data during migration.
+
+  Returns `{:ok, [struct]}` on success or `{:error, reason}` on failure.
+
+  ## Examples
+
+  Basic usage migrates all untracked records:
+
+      {:ok, users} = Spector.bringup(MyApp.User)
+
+  Use a custom action to trigger different changeset logic:
+
+      # In your schema, pattern match on the action:
+      # def changeset(changeset, attrs) when changeset.action == :import do
+      #   # special handling for imported records
+      # end
+
+      {:ok, users} = Spector.bringup(MyApp.User, :import)
+
+  Use a custom attr_fn to transform data during migration:
+
+      attr_fn = fn record ->
+        %{
+          name: String.upcase(record.name),
+          value: record.value || 0  # provide defaults for nil values
+        }
+      end
+
+      {:ok, users} = Spector.bringup(MyApp.User, :import, attr_fn)
+  """
+  def bringup(schema, action \\ :insert, attr_fn \\ &from_record/1) do
+    import Ecto.Query
+    events = schema.__spector__(:events)
+    repo = get_repo(schema, events)
+
+    repo.transact(fn ->
+      # Only select records that don't already have events
+      events_table = events.__schema__(:source)
+
+      query =
+        from r in schema,
+          left_join: e in ^{events_table, events},
+          on: e.parent_id == r.id and e.schema == ^schema,
+          where: is_nil(e.id)
+
+      new_records =
+        repo.all(query)
+        |> Enum.map(fn record ->
+          attrs = attr_fn.(record)
+          repo.delete!(record)
+
+          case insert(schema, attrs, action) do
+            {:ok, new_record} -> new_record
+            {:error, changeset} ->
+              raise "Failed to bringup record #{inspect(record)}: #{inspect(changeset)}"
+          end
+        end)
+
+      {:ok, new_records}
+    end)
+  end
+
+  defp from_record(record) do
+    schema = record.__struct__
+
+    :fields
+    |> schema.__schema__()
+    |> then(&Map.take(record, &1))
+    |> Map.delete(:id)
   end
 
   defp and_apply(nil, _action), do: nil

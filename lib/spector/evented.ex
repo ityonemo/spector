@@ -139,6 +139,42 @@ defmodule Spector.Evented do
   @optional_callbacks [prepare_event: 3]
 
   @doc """
+  Creates a has_many association to the event log for this record.
+
+  Use this inside your schema definition to add an association that retrieves
+  all events for a given record.
+
+  ## Example
+
+      defmodule MyApp.User do
+        use Spector.Evented, events: MyApp.Events
+        use Ecto.Schema
+
+        schema "users" do
+          field :name, :string
+          event_log :log
+        end
+      end
+
+  Then you can preload and access events:
+
+      user = Repo.get(User, id) |> Repo.preload(:log)
+      user.log  # Returns all events for this user
+  """
+  defmacro event_log(name) do
+    quote do
+      events_module = @__spector_events__
+      schema_module = __MODULE__
+
+      has_many unquote(name), events_module,
+        foreign_key: :parent_id,
+        references: :id,
+        where: [schema: schema_module],
+        preload_order: [asc: :inserted_at]
+    end
+  end
+
+  @doc """
   Guard to check if attrs version is within a range or list of integers.
 
   Example: `def changeset(struct, attrs) when version_in(attrs, 0..2)`
@@ -173,9 +209,10 @@ defmodule Spector.Evented do
     actions = Keyword.get(opts, :actions, [])
 
     quote do
-      import Spector.Evented, only: [version_in: 2, version_is: 2]
+      import Spector.Evented, only: [version_in: 2, version_is: 2, event_log: 1]
 
       @primary_key {:id, UUIDv7, autogenerate: false}
+      @__spector_events__ unquote(events)
 
       def __spector__(:events), do: unquote(events)
       def __spector__(:repo), do: unquote(repo)

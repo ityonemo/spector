@@ -84,6 +84,88 @@ defmodule SpectorTest.BasicTest do
     end
   end
 
+  describe "Spector.bringup/1" do
+    test "imports existing records into the event log with new IDs" do
+      # Insert records directly (simulating pre-Spector data with UUIDv4)
+      {:ok, %{id: old_id1}} = Repo.insert(%Basic{id: Ecto.UUID.generate(), name: "Alice", value: 1})
+      {:ok, %{id: old_id2}} = Repo.insert(%Basic{id: Ecto.UUID.generate(), name: "Bob", value: 2})
+
+      # Verify old IDs are not UUIDv7 (version nibble is not "7")
+      refute String.at(old_id1, 14) == "7"
+      refute String.at(old_id2, 14) == "7"
+
+      # Bringup should migrate to Spector management
+      assert {:ok, new_records} = Spector.bringup(Basic)
+      assert length(new_records) == 2
+
+      # New records have different IDs (UUIDv7)
+      new_ids = Enum.map(new_records, & &1.id)
+      refute old_id1 in new_ids
+      refute old_id2 in new_ids
+
+      # Original records were deleted
+      refute Repo.get(Basic, old_id1)
+      refute Repo.get(Basic, old_id2)
+
+      # Data was migrated correctly
+      assert Enum.any?(new_records, &(&1.name == "Alice" and &1.value == 1))
+      assert Enum.any?(new_records, &(&1.name == "Bob" and &1.value == 2))
+
+      # Events were created for new records
+      events = Repo.all(Event)
+      assert length(events) == 2
+      assert Enum.all?(events, &(&1.action == :insert))
+    end
+
+    test "skips records that are already tracked" do
+      # Create a Spector-managed record
+      {:ok, %{id: tracked_id}} = Spector.insert(Basic, %{name: "Tracked", value: 1})
+
+      # Create a non-tracked record directly
+      {:ok, %{id: untracked_id}} = Repo.insert(%Basic{id: Ecto.UUID.generate(), name: "Untracked", value: 2})
+
+      # Bringup should only migrate the untracked record
+      assert {:ok, new_records} = Spector.bringup(Basic)
+      assert length(new_records) == 1
+      assert [%{name: "Untracked", value: 2}] = new_records
+
+      # Tracked record is unchanged
+      assert %{id: ^tracked_id, name: "Tracked", value: 1} = Repo.get!(Basic, tracked_id)
+
+      # Untracked record was deleted
+      refute Repo.get(Basic, untracked_id)
+
+      # Only one new event was created (for the untracked record)
+      events = Repo.all(Event)
+      assert length(events) == 2  # 1 original insert + 1 from bringup
+    end
+  end
+
+  describe "event_log association" do
+    test "preloads events for a record in chronological order" do
+      {:ok, %{id: id}} = Spector.insert(Basic, %{name: "Bob", value: 99})
+      object = Repo.get!(Basic, id)
+      {:ok, _} = Spector.update(object, %{value: 100})
+      {:ok, _} = Spector.update(object, %{value: 200})
+
+      # Preload events via the association
+      object = Repo.get!(Basic, id) |> Repo.preload(:log)
+
+      assert length(object.log) == 3
+      assert [insert_event, update1, update2] = object.log
+
+      # Events are in chronological order (asc by inserted_at)
+      assert insert_event.action == :insert
+      assert update1.action == :update
+      assert update2.action == :update
+
+      # All events reference the same parent
+      assert insert_event.parent_id == id
+      assert update1.parent_id == id
+      assert update2.parent_id == id
+    end
+  end
+
   describe "Event.backtrace/1" do
     test "returns all events up to and including the given entry" do
       {:ok, %{id: id}} = Spector.insert(Basic, %{name: "Bob", value: 99})
