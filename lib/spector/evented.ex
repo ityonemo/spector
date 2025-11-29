@@ -188,11 +188,12 @@ defmodule Spector.Evented do
       schema_module = __MODULE__
       {pk_field, _, _} = @primary_key
 
-      has_many unquote(name), events_module,
+      has_many(unquote(name), events_module,
         foreign_key: :parent_id,
         references: pk_field,
         where: [schema: schema_module],
         preload_order: [asc: :inserted_at]
+      )
     end
   end
 

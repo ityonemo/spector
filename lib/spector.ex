@@ -1,4 +1,23 @@
 defmodule Spector do
+  @typedoc "An Ecto schema module that uses `Spector.Evented`"
+  @type evented_schema :: module()
+
+  @typedoc "A struct instance of an evented schema"
+  @type evented_struct :: struct()
+
+  @typedoc "Attributes map passed to changesets"
+  @type attrs :: map()
+
+  @typedoc "An action atom (e.g., :insert, :update, :delete, or custom actions)"
+  @type action :: atom()
+
+  @typedoc "Options for `bringup/2`"
+  @type bringup_opts :: [
+          action: action(),
+          attr_fn: (evented_struct() -> attrs()),
+          transfer: (evented_struct(), evented_struct() -> any())
+        ]
+
   @moduledoc """
   CQRS-style event sourcing for Ecto schemas.
 
@@ -202,6 +221,10 @@ defmodule Spector do
 
   The inserted struct will have a new UUIDv7 `id` assigned.
   """
+  @spec insert(evented_schema(), attrs()) ::
+          {:ok, evented_struct()} | {:error, Ecto.Changeset.t()}
+  @spec insert(evented_schema(), attrs(), action()) ::
+          {:ok, evented_struct()} | {:error, Ecto.Changeset.t()}
   def insert(schema, attrs, action \\ :insert) do
     events = schema.__spector__(:events)
     repo = get_repo(schema, events)
@@ -273,6 +296,8 @@ defmodule Spector do
 
       {:ok, user} = Spector.update(user, %{name: "Alice Smith"})
   """
+  @spec update(evented_struct(), attrs()) ::
+          {:ok, evented_struct()} | {:error, Ecto.Changeset.t()}
   def update(object, attrs) do
     execute(object, :update, attrs)
   end
@@ -289,6 +314,7 @@ defmodule Spector do
 
       user = Spector.get(MyApp.User, "019ac640-dfc0-7407-8238-39a9c45e8813")
   """
+  @spec get(evented_schema(), String.t()) :: evented_struct() | nil
   def get(schema, parent_id) do
     events_module = schema.__spector__(:events)
 
@@ -309,12 +335,16 @@ defmodule Spector do
 
   ## Options
 
-    * `action` - The action to use for the event (default: `:insert`). Use a custom
+    * `:action` - The action to use for the event (default: `:insert`). Use a custom
       action like `:import` to trigger different changeset behavior during migration.
 
-    * `attr_fn` - A function that takes a record and returns the attributes map to
+    * `:attr_fn` - A function that takes a record and returns the attributes map to
       insert (default: extracts all schema fields except the primary key). Use this to
       transform or augment data during migration.
+
+    * `:transfer` - A function that receives the old record and the new record before
+      the old record is deleted. Use this to update associations or perform other
+      transfer operations (default: no-op).
 
   Returns `{:ok, [struct]}` on success or `{:error, reason}` on failure.
 
@@ -349,7 +379,7 @@ defmodule Spector do
         %{name: record.name, inserted_at: record.inserted_at, updated_at: record.updated_at}
       end
 
-      {:ok, users} = Spector.bringup(MyApp.User, :import, attr_fn)
+      {:ok, users} = Spector.bringup(MyApp.User, action: :import, attr_fn: attr_fn)
 
   ## Examples
 
@@ -359,17 +389,31 @@ defmodule Spector do
 
   Use a custom attr_fn to transform data during migration:
 
-      attr_fn = fn record ->
+      {:ok, users} = Spector.bringup(MyApp.User, attr_fn: fn record ->
         %{
           name: String.upcase(record.name),
           value: record.value || 0  # provide defaults for nil values
         }
-      end
+      end)
 
-      {:ok, users} = Spector.bringup(MyApp.User, :insert, attr_fn)
+  Use a transfer function to update associations before the old record is deleted:
+
+      {:ok, users} = Spector.bringup(MyApp.User, transfer: fn old, new ->
+        Repo.update_all(
+          from(p in Post, where: p.user_id == ^old.id),
+          set: [user_id: new.id]
+        )
+      end)
   """
-  def bringup(schema, action \\ :insert, attr_fn \\ &from_record/1) do
+  @spec bringup(evented_schema()) :: {:ok, [evented_struct()]}
+  @spec bringup(evented_schema(), bringup_opts()) :: {:ok, [evented_struct()]}
+  def bringup(schema, opts \\ []) do
     import Ecto.Query
+
+    action = Keyword.get(opts, :action, :insert)
+    attr_fn = Keyword.get(opts, :attr_fn, &from_record/1)
+    transfer_fn = Keyword.get(opts, :transfer, fn _, _ -> :ok end)
+
     events = schema.__spector__(:events)
     repo = get_repo(schema, events)
 
@@ -379,19 +423,23 @@ defmodule Spector do
       [pk_field] = schema.__schema__(:primary_key)
 
       query =
-        from r in schema,
+        from(r in schema,
           left_join: e in ^{events_table, events},
           on: e.parent_id == field(r, ^pk_field) and e.schema == ^schema,
           where: is_nil(e.id)
+        )
 
       new_records =
         repo.all(query)
         |> Enum.map(fn record ->
           attrs = attr_fn.(record)
-          repo.delete!(record)
 
           case insert(schema, attrs, action) do
-            {:ok, new_record} -> new_record
+            {:ok, new_record} ->
+              transfer_fn.(record, new_record)
+              repo.delete!(record)
+              new_record
+
             {:error, changeset} ->
               raise "Failed to bringup record #{inspect(record)}: #{inspect(changeset)}"
           end
@@ -429,6 +477,7 @@ defmodule Spector do
 
       {:ok, user} = Spector.delete(user)
   """
+  @spec delete(evented_struct()) :: {:ok, evented_struct()} | {:error, Ecto.Changeset.t()}
   def delete(object) do
     schema = object.__struct__
     events = schema.__spector__(:events)
@@ -469,6 +518,8 @@ defmodule Spector do
       # The :update action (same as Spector.update/2)
       {:ok, user} = Spector.execute(user, :update, %{name: "New Name"})
   """
+  @spec execute(evented_struct(), action(), attrs()) ::
+          {:ok, evented_struct()} | {:error, Ecto.Changeset.t()}
   def execute(object, action, attrs) do
     schema = object.__struct__
     events_module = schema.__spector__(:events)
@@ -522,26 +573,28 @@ defmodule Spector do
     end
   end
 
-  @doc """
-  Assigns the event ID from attrs to a field on the changeset.
-
-  If no `:__event_id__` is present in attrs, the changeset is returned unchanged.
-
-  ## Parameters
-
-    - `changeset` - The Ecto changeset to modify
-    - `attrs` - The attrs map passed to `changeset/2` (contains `:__event_id__`)
-    - `field` - The field to assign the event ID to (default: `:id`)
-
-  ## Example
-
-      def changeset(message, attrs) do
-        message
-        |> Ecto.Changeset.cast(attrs, [:content, :role])
-        |> Spector.changeset_put_event_id(attrs)
-        |> Ecto.Changeset.validate_required([:id, :content, :role])
-      end
-  """
+  @doc false
+  # this is an internal utility function.
+  # Assigns the event ID from attrs to a field on the changeset.
+  #
+  # If no `:__event_id__` is present in attrs, the changeset is returned unchanged.
+  #
+  # ## Parameters
+  #
+  #   - `changeset` - The Ecto changeset to modify
+  #   - `attrs` - The attrs map passed to `changeset/2` (contains `:__event_id__`)
+  #   - `field` - The field to assign the event ID to (default: `:id`)
+  #
+  # ## Example
+  #
+  #     def changeset(message, attrs) do
+  #       message
+  #       |> Ecto.Changeset.cast(attrs, [:content, :role])
+  #       |> Spector.changeset_put_event_id(attrs)
+  #       |> Ecto.Changeset.validate_required([:id, :content, :role])
+  #     end
+  @spec changeset_put_event_id(Ecto.Changeset.t(), attrs()) :: Ecto.Changeset.t()
+  @spec changeset_put_event_id(Ecto.Changeset.t(), attrs(), atom()) :: Ecto.Changeset.t()
   def changeset_put_event_id(changeset, attrs, field \\ :id) do
     case attrs do
       %{"__event_id__" => event_id} ->

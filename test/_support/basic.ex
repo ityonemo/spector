@@ -6,7 +6,7 @@ defmodule SpectorTest.Basic do
   schema "basic" do
     field(:name, :string)
     field(:value, :integer)
-    event_log :log
+    event_log(:log)
     timestamps()
   end
 

@@ -87,7 +87,9 @@ defmodule SpectorTest.BasicTest do
   describe "Spector.bringup/1" do
     test "imports existing records into the event log with new IDs" do
       # Insert records directly (simulating pre-Spector data with UUIDv4)
-      {:ok, %{id: old_id1}} = Repo.insert(%Basic{id: Ecto.UUID.generate(), name: "Alice", value: 1})
+      {:ok, %{id: old_id1}} =
+        Repo.insert(%Basic{id: Ecto.UUID.generate(), name: "Alice", value: 1})
+
       {:ok, %{id: old_id2}} = Repo.insert(%Basic{id: Ecto.UUID.generate(), name: "Bob", value: 2})
 
       # Verify old IDs are not UUIDv7 (version nibble is not "7")
@@ -122,7 +124,8 @@ defmodule SpectorTest.BasicTest do
       {:ok, %{id: tracked_id}} = Spector.insert(Basic, %{name: "Tracked", value: 1})
 
       # Create a non-tracked record directly
-      {:ok, %{id: untracked_id}} = Repo.insert(%Basic{id: Ecto.UUID.generate(), name: "Untracked", value: 2})
+      {:ok, %{id: untracked_id}} =
+        Repo.insert(%Basic{id: Ecto.UUID.generate(), name: "Untracked", value: 2})
 
       # Bringup should only migrate the untracked record
       assert {:ok, new_records} = Spector.bringup(Basic)
@@ -137,7 +140,8 @@ defmodule SpectorTest.BasicTest do
 
       # Only one new event was created (for the untracked record)
       events = Repo.all(Event)
-      assert length(events) == 2  # 1 original insert + 1 from bringup
+      # 1 original insert + 1 from bringup
+      assert length(events) == 2
     end
   end
 

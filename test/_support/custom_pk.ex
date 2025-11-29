@@ -7,7 +7,7 @@ defmodule SpectorTest.CustomPK do
   schema "custom_pk" do
     field(:name, :string)
     field(:value, :integer)
-    event_log :log
+    event_log(:log)
   end
 
   def changeset(changeset, attrs) do

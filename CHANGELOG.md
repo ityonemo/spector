@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- `Spector.bringup/2` now accepts keyword options instead of positional arguments
+  - `:action` - The action to use for events (default: `:insert`)
+  - `:attr_fn` - Function to transform record attributes
+  - `:transfer` - Function to update associations before old record deletion
+- Added typespecs to all public Spector functions
+
 ## 0.4.0
 
 - `Spector.bringup/3` to import existing database records into event log

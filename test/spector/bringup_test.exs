@@ -58,7 +58,7 @@ defmodule SpectorTest.BringupTest do
         }
       end
 
-      {:ok, [new_record]} = Spector.bringup(BringupSchema, :import, attr_fn)
+      {:ok, [new_record]} = Spector.bringup(BringupSchema, action: :import, attr_fn: attr_fn)
 
       # Original was deleted
       refute Repo.get(BringupSchema, old_id)
@@ -74,10 +74,11 @@ defmodule SpectorTest.BringupTest do
   describe "Spector.bringup/3 with custom action" do
     test "uses a different changeset for :import action" do
       # Insert a record directly (simulating pre-Spector data)
-      {:ok, %{id: old_id}} = Repo.insert(%BringupSchema{id: Ecto.UUID.generate(), name: "Alice", value: 1})
+      {:ok, %{id: old_id}} =
+        Repo.insert(%BringupSchema{id: Ecto.UUID.generate(), name: "Alice", value: 1})
 
       # Bringup with :import action triggers the import changeset
-      assert {:ok, [new_record]} = Spector.bringup(BringupSchema, :import)
+      assert {:ok, [new_record]} = Spector.bringup(BringupSchema, action: :import)
 
       # Original was deleted
       refute Repo.get(BringupSchema, old_id)
@@ -96,7 +97,8 @@ defmodule SpectorTest.BringupTest do
   describe "Spector.bringup/3 with custom attr_fn" do
     test "transforms attributes before inserting" do
       # Insert a record directly
-      {:ok, %{id: old_id}} = Repo.insert(%BringupSchema{id: Ecto.UUID.generate(), name: "alice", value: 10})
+      {:ok, %{id: old_id}} =
+        Repo.insert(%BringupSchema{id: Ecto.UUID.generate(), name: "alice", value: 10})
 
       # Custom attr_fn that uppercases name and doubles value
       attr_fn = fn record ->
@@ -107,7 +109,8 @@ defmodule SpectorTest.BringupTest do
       end
 
       # Using :import action, so name gets "imported_" prefix after uppercase
-      assert {:ok, [new_record]} = Spector.bringup(BringupSchema, :import, attr_fn)
+      assert {:ok, [new_record]} =
+               Spector.bringup(BringupSchema, action: :import, attr_fn: attr_fn)
 
       # Original was deleted
       refute Repo.get(BringupSchema, old_id)
@@ -129,10 +132,36 @@ defmodule SpectorTest.BringupTest do
         }
       end
 
-      assert {:ok, [new_record]} = Spector.bringup(BringupSchema, :import, attr_fn)
+      assert {:ok, [new_record]} =
+               Spector.bringup(BringupSchema, action: :import, attr_fn: attr_fn)
 
       assert new_record.name == "imported_Bob"
       assert new_record.value == 99
+    end
+  end
+
+  describe "Spector.bringup/2 with transfer function" do
+    test "transfer function receives old and new records" do
+      # Insert a record directly
+      {:ok, old_record} =
+        Repo.insert(%BringupSchema{id: Ecto.UUID.generate(), name: "Transfer", value: 42})
+
+      test_pid = self()
+
+      transfer_fn = fn old, new ->
+        send(test_pid, {:transfer, old, new})
+      end
+
+      {:ok, [new_record]} = Spector.bringup(BringupSchema, transfer: transfer_fn)
+
+      # Verify transfer function was called with correct parameters
+      assert_receive {:transfer, received_old, received_new}
+      assert received_old.id == old_record.id
+      assert received_old.name == "Transfer"
+      assert received_old.value == 42
+      assert received_new.id == new_record.id
+      assert received_new.name == "Transfer"
+      assert received_new.value == 42
     end
   end
 end

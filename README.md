@@ -11,7 +11,7 @@ Add `spector` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:spector, "~> 0.4.0"}
+    {:spector, "~> 0.5.0"}
   ]
 end
 ```

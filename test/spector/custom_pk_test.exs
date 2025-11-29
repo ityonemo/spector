@@ -37,7 +37,8 @@ defmodule SpectorTest.CustomPKTest do
 
     test "bringup works with custom primary key" do
       # Insert a record directly (simulating pre-Spector data)
-      {:ok, %{uuid: old_uuid}} = Repo.insert(%CustomPK{uuid: Ecto.UUID.generate(), name: "Bob", value: 10})
+      {:ok, %{uuid: old_uuid}} =
+        Repo.insert(%CustomPK{uuid: Ecto.UUID.generate(), name: "Bob", value: 10})
 
       # Bringup should migrate to Spector management
       assert {:ok, [new_record]} = Spector.bringup(CustomPK)
