@@ -800,15 +800,62 @@ defmodule Spector do
   defp roll_forward(events = [%{schema: schema, parent_id: parent_id} | _]) do
     [pk_field] = schema.__schema__(:primary_key)
 
-    schema
-    |> struct!([{pk_field, parent_id}])
-    |> Changeset.change()
+    # If schema implements savepoint/1, start from the most recent savepoint
+    {initial_changeset, events_to_replay} =
+      if function_exported?(schema, :savepoint, 1) do
+        find_savepoint_start(schema, pk_field, parent_id, events)
+      else
+        {schema |> struct!([{pk_field, parent_id}]) |> Changeset.change(), events}
+      end
+
+    initial_changeset
     |> then(
-      &Enum.reduce(events, &1, fn %{parent_id: ^parent_id} = event, changeset ->
+      &Enum.reduce(events_to_replay, &1, fn %{parent_id: ^parent_id} = event, changeset ->
         changeset
         |> Map.replace!(:action, event.action)
         |> schema.changeset(Map.put(event.payload, "__event_id__", event.id))
       end)
     )
+  end
+
+  # Find the most recent savepoint and return {initial_changeset, events_after_savepoint}
+  defp find_savepoint_start(schema, pk_field, parent_id, events) do
+    # Find the index of the last savepoint event
+    savepoint_index =
+      events
+      |> Enum.reverse()
+      |> Enum.find_index(&(&1.action == :savepoint))
+
+    case savepoint_index do
+      nil ->
+        # No savepoint found, start from scratch
+        {schema |> struct!([{pk_field, parent_id}]) |> Changeset.change(), events}
+
+      idx ->
+        # Convert reverse index to forward index
+        forward_index = length(events) - 1 - idx
+        savepoint_event = Enum.at(events, forward_index)
+
+        # Build initial state from savepoint payload
+        initial_struct =
+          schema
+          |> struct!([{pk_field, parent_id}])
+          |> then(fn struct ->
+            # Apply savepoint payload fields to struct
+            savepoint_event.payload
+            |> Map.drop(["__version__", "__event_id__"])
+            |> Enum.reduce(struct, fn {key, value}, acc ->
+              field = if is_binary(key), do: String.to_existing_atom(key), else: key
+              Map.put(acc, field, value)
+            end)
+          end)
+
+        initial_changeset = Changeset.change(initial_struct)
+
+        # Return events after the savepoint (excluding the savepoint itself)
+        events_after = Enum.drop(events, forward_index + 1)
+
+        {initial_changeset, events_after}
+    end
   end
 end
