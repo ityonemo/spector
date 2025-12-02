@@ -3,10 +3,13 @@ defmodule Spector.Integrity do
   Integrity verification for Spector event logs.
 
   This module provides functions to verify the integrity of event logs,
-  including savepoint validation and (future) hash chain verification.
+  including savepoint validation and hash chain verification.
   """
 
+  import Ecto.Query
   alias Ecto.Changeset
+
+  @json_library if Code.ensure_loaded?(Jason), do: Jason, else: JSON
 
   @doc """
   Verify all savepoints for a record match the expected state at that point.
@@ -117,6 +120,82 @@ defmodule Spector.Integrity do
   # Normalize map keys to atoms for comparison
   defp normalize_keys(map) do
     Map.new(map, fn {k, v} ->
+      key = if is_binary(k), do: String.to_existing_atom(k), else: k
+      {key, v}
+    end)
+  end
+
+  @doc """
+  Verify the hash chain integrity of an entire events table.
+
+  Iterates through all events in the table ordered by id and verifies
+  that each event's hash correctly chains from the previous event.
+
+  Returns `:ok` if the hash chain is valid, or an error tuple describing
+  the first broken link in the chain.
+
+  Returns `{:error, :not_hashed}` if the events module doesn't have
+  hash chain integrity enabled.
+
+  ## Examples
+
+      # Verify the hash chain for an events table
+      :ok = Spector.Integrity.verify_hash_chain(MyApp.Events)
+
+      # Handle verification failures
+      case Spector.Integrity.verify_hash_chain(MyApp.Events) do
+        :ok -> :verified
+        {:error, :not_hashed} -> :hashing_not_enabled
+        {:error, {:hash_mismatch, event_id, expected, actual}} ->
+          Logger.error("Hash mismatch at event \#{event_id}")
+      end
+  """
+  @spec verify_hash_chain(module()) ::
+          :ok | {:error, :not_hashed} | {:error, {:hash_mismatch, binary(), binary(), binary()}}
+  def verify_hash_chain(events_module) do
+    unless events_module.__spector__(:hashed) do
+      {:error, :not_hashed}
+    else
+      repo = events_module.__spector__(:repo)
+      table = events_module.__schema__(:source)
+
+      # Stream all events ordered by id
+      events =
+        repo.all(
+          from(e in {table, events_module},
+            order_by: [asc: e.id],
+            select: %{id: e.id, schema: e.schema, action: e.action, payload: e.payload, hash: e.hash}
+          )
+        )
+
+      verify_chain(events, nil)
+    end
+  end
+
+  defp verify_chain([], _prev_hash), do: :ok
+
+  defp verify_chain([event | rest], prev_hash) do
+    expected_hash = compute_hash(prev_hash, event)
+
+    if expected_hash == event.hash do
+      verify_chain(rest, event.hash)
+    else
+      {:error, {:hash_mismatch, event.id, expected_hash, event.hash}}
+    end
+  end
+
+  defp compute_hash(prev_hash, event) do
+    prev_hash_hex = if prev_hash, do: "#{Base.encode16(prev_hash, case: :lower)}:", else: ""
+    # Normalize payload to atom keys and sort for consistent JSON encoding
+    normalized_payload = normalize_payload_keys(event.payload)
+    payload_json = @json_library.encode!(normalized_payload)
+    data = "#{prev_hash_hex}#{event.schema}.#{event.action}#{payload_json}"
+    :crypto.hash(:sha256, data)
+  end
+
+  # Convert string keys to atoms to match the original encoding order
+  defp normalize_payload_keys(payload) do
+    Map.new(payload, fn {k, v} ->
       key = if is_binary(k), do: String.to_existing_atom(k), else: k
       {key, v}
     end)

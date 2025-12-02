@@ -80,4 +80,61 @@ defmodule SpectorTest.IntegrityTest do
       assert :ok = Integrity.verify_savepoints(SpectorTest.Savepointable, record.id)
     end
   end
+
+  describe "verify_hash_chain/1" do
+    test "returns :ok for valid hash chain" do
+      {:ok, record1} = Spector.insert(SpectorTest.Hashed, %{name: "First", value: 1})
+      {:ok, _record2} = Spector.insert(SpectorTest.Hashed, %{name: "Second", value: 2})
+      {:ok, _record1} = Spector.update(record1, %{value: 10})
+
+      assert :ok = Integrity.verify_hash_chain(SpectorTest.HashedEvent)
+    end
+
+    test "returns :ok for empty table" do
+      assert :ok = Integrity.verify_hash_chain(SpectorTest.HashedEvent)
+    end
+
+    test "returns error when hash chain is broken" do
+      {:ok, _record1} = Spector.insert(SpectorTest.Hashed, %{name: "First", value: 1})
+      {:ok, _record2} = Spector.insert(SpectorTest.Hashed, %{name: "Second", value: 2})
+
+      # Get the second event and corrupt its hash
+      import Ecto.Query
+      events = SpectorTest.Repo.all(from(e in SpectorTest.HashedEvent, order_by: [asc: e.id]))
+      second_event = Enum.at(events, 1)
+
+      SpectorTest.Repo.update_all(
+        from(e in SpectorTest.HashedEvent, where: e.id == ^second_event.id),
+        set: [hash: :crypto.hash(:sha256, "corrupted")]
+      )
+
+      assert {:error, {:hash_mismatch, event_id, _expected, _actual}} =
+               Integrity.verify_hash_chain(SpectorTest.HashedEvent)
+
+      assert event_id == second_event.id
+    end
+
+    test "returns error when payload is tampered" do
+      {:ok, _record} = Spector.insert(SpectorTest.Hashed, %{name: "Test", value: 1})
+
+      # Tamper with the payload without updating the hash
+      events = SpectorTest.Repo.all(SpectorTest.HashedEvent)
+      event = List.first(events)
+
+      import Ecto.Query
+      SpectorTest.Repo.update_all(
+        from(e in SpectorTest.HashedEvent, where: e.id == ^event.id),
+        set: [payload: %{"name" => "Tampered", "value" => 999, "__version__" => 0}]
+      )
+
+      assert {:error, {:hash_mismatch, event_id, _, _}} =
+               Integrity.verify_hash_chain(SpectorTest.HashedEvent)
+
+      assert event_id == event.id
+    end
+
+    test "returns error when events module is not hashed" do
+      assert {:error, :not_hashed} = Integrity.verify_hash_chain(SpectorTest.Event)
+    end
+  end
 end
