@@ -66,6 +66,26 @@ defmodule Spector.Migration do
   Each link tuple creates a join table with `event_id` and the specified foreign key,
   along with indexes for efficient queries.
 
+  ## Typed Link Tables
+
+  To distinguish different relationship types on the same link table, use the
+  `:typed` option to add a `type` integer column:
+
+  ```elixir
+  def up do
+    Spector.Migration.up(
+      table: "events",
+      links: [{"event_links", :linked_id, typed: true}]
+    )
+  end
+  ```
+
+  The type column allows a single link table to represent multiple relationship types
+  (e.g., "parent", "sibling", "reference") by assigning each type an integer value.
+
+  It is recommended to use an Ecto schema for typed link tables. See the
+  [Event Links Guide](links.md) for examples.
+
   ## Generated Schema
 
   The migration creates a table with:
@@ -145,13 +165,30 @@ defmodule Spector.Migration do
   ## Parameters
 
   * `events_table` - The events table this link table references
-  * `{link_table, foreign_key}` - The link table name and foreign key column
+  * `link_spec` - Either `{link_table, foreign_key}` or `{link_table, foreign_key, opts}`
 
-  ## Example
+  ## Options
+
+  * `:typed` - Add a `type` integer column to distinguish different relationship types
+    on the same link table (default: `false`)
+
+  ## Examples
+
+  Basic link table:
 
       Spector.Migration.link_up("events", {"event_ancestors", :ancestor_id})
+
+  Link table with type column:
+
+      Spector.Migration.link_up("events", {"event_links", :linked_id, typed: true})
   """
   def link_up(events_table, {link_table, foreign_key}) do
+    link_up(events_table, {link_table, foreign_key, []})
+  end
+
+  def link_up(events_table, {link_table, foreign_key, opts}) do
+    typed = Keyword.get(opts, :typed, false)
+
     create table(link_table, primary_key: false) do
       add(:event_id, references(events_table, type: :binary_id, on_delete: :delete_all),
         null: false
@@ -160,11 +197,20 @@ defmodule Spector.Migration do
       add(foreign_key, references(events_table, type: :binary_id, on_delete: :delete_all),
         null: false
       )
+
+      if typed do
+        add(:type, :integer, null: false)
+      end
     end
 
     create(index(link_table, [:event_id]))
     create(index(link_table, [foreign_key]))
-    create(unique_index(link_table, [:event_id, foreign_key]))
+
+    if typed do
+      create(unique_index(link_table, [:event_id, foreign_key, :type]))
+    else
+      create(unique_index(link_table, [:event_id, foreign_key]))
+    end
   end
 
   @doc """
@@ -175,6 +221,10 @@ defmodule Spector.Migration do
       Spector.Migration.link_down({"event_ancestors", :ancestor_id})
   """
   def link_down({link_table, _foreign_key}) do
+    drop(table(link_table))
+  end
+
+  def link_down({link_table, _foreign_key, _opts}) do
     drop(table(link_table))
   end
 end

@@ -51,3 +51,8 @@ SpectorTest.TestTemplate.execute(AIChatTest, ai_tests)
 {basic_modules, basic_tests} = SpectorTest.GuideHelper.load_guide("guides/basic_chat.md")
 Enum.each(basic_modules, &Code.eval_string/1)
 SpectorTest.TestTemplate.execute(BasicChatTest, basic_tests)
+
+# Generate tests from links.md
+{links_modules, links_tests} = SpectorTest.GuideHelper.load_guide("guides/links.md")
+Enum.each(links_modules, &Code.eval_string/1)
+SpectorTest.TestTemplate.execute(LinksTest, links_tests)

@@ -74,6 +74,17 @@ defmodule Spector.Events do
   ]
   ```
 
+  For typed links that use an Ecto schema module, pass the module instead of a table name:
+
+  ```elixir
+  links: [links: {MyApp.TypedEventLink, :linked_id}]
+  ```
+
+  When using a schema module, the association becomes a `has_many` to the link schema,
+  enabling `put_assoc` with link structs in `prepare_event/3` callbacks. When using
+  a table name string, the association is a `many_to_many` to events through the join table.
+  See the [Event Links Guide](links.md) for details on typed links.
+
   ## Schema Indexing
 
   Schemas are stored as integers in the database. By default, schemas are
@@ -298,11 +309,19 @@ defmodule Spector.Events do
           field(:hash, :binary)
         end
 
-        for {assoc_name, {table, foreign_key}} <- unquote(links) do
-          many_to_many(assoc_name, __MODULE__,
-            join_through: table,
-            join_keys: [{:event_id, :id}, {foreign_key, :id}]
-          )
+        for {assoc_name, link_spec} <- unquote(links) do
+          case link_spec do
+            {table, foreign_key} when is_binary(table) ->
+              many_to_many(assoc_name, __MODULE__,
+                join_through: table,
+                join_keys: [{:event_id, :id}, {foreign_key, :id}]
+              )
+
+            {schema_module, foreign_key} when is_atom(schema_module) ->
+              # For schema modules, create a has_many for the join schema
+              # This allows using put_assoc with the link schema directly
+              has_many(assoc_name, schema_module, foreign_key: :event_id)
+          end
         end
 
         timestamps(type: :utc_datetime_usec)
