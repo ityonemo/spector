@@ -74,16 +74,43 @@ defmodule Spector.Events do
   ]
   ```
 
-  For typed links that use an Ecto schema module, pass the module instead of a table name:
+  For links that use an Ecto schema module, pass the module instead of a table name:
 
   ```elixir
-  links: [links: {MyApp.TypedEventLink, :linked_id}]
+  links: [links: {MyApp.EventLink, :linked_id}]
   ```
 
-  When using a schema module, the association becomes a `has_many` to the link schema,
-  enabling `put_assoc` with link structs in `prepare_event/3` callbacks. When using
-  a table name string, the association is a `many_to_many` to events through the join table.
-  See the [Event Links Guide](links.md) for details on typed links.
+  The two approaches differ in what the association returns:
+
+  - **Table name string**: Creates a `many_to_many` association. Preloading returns the
+    linked **events** directly. You cannot use `put_assoc` to set fields on the join table.
+
+  - **Schema module**: Creates a `has_many` association. Preloading returns the **link
+    records** themselves (e.g., `%EventLink{event_id: ..., linked_id: ..., type: ...}`).
+    You can use `put_assoc` in `prepare_event/3` to create links with custom fields.
+
+  Use a schema module when you need to store metadata on links (types, timestamps, etc.)
+  or need to create links via `put_assoc`. Use a table name string for simple joins where
+  you only care about which events are connected.
+
+  See the [Event Links Guide](links.md) for details.
+
+  ### Sharding with Links
+
+  When combining sharding with links, a separate link table is created for each shard.
+  Use `link_table_for/2` to get the correct link table name for a given parent_id:
+
+  ```elixir
+  def prepare_event(event_changeset, _previous_events, attrs) do
+    parent_id = Ecto.Changeset.get_field(event_changeset, :parent_id)
+    link_table = MyEvents.link_table_for(parent_id, "ancestors")
+
+    link = %MyLink{ancestor_id: attrs[:ancestor_id]}
+    link = Ecto.put_meta(link, source: link_table)
+
+    Ecto.Changeset.put_assoc(event_changeset, :ancestors, [link])
+  end
+  ```
 
   ## Schema Indexing
 
@@ -187,6 +214,14 @@ defmodule Spector.Events do
   """
   @callback shard(changeset :: Ecto.Changeset.t(), parent_id :: binary()) :: Ecto.Changeset.t()
 
+  @doc """
+  Get the link table name for a given parent_id and base link table name.
+
+  With sharding, link tables are prefixed with the shard table name.
+  Without sharding, returns the link table name unchanged.
+  """
+  @callback link_table_for(parent_id :: binary(), link_table :: String.t()) :: String.t()
+
   @base_actions [insert: 1, update: 2, delete: 3]
 
   defp index_schemas(schemas, caller) do
@@ -289,14 +324,29 @@ defmodule Spector.Events do
       def __spector__(:links), do: unquote(links)
 
       if unquote(shard) do
+        @doc false
         def shard(changeset, parent_id) do
           %{changeset | data: Ecto.put_meta(changeset.data, source: unquote(shard)(parent_id))}
         end
 
+        @doc false
         def table_for(parent_id), do: unquote(shard)(parent_id)
+
+        @doc false
+        def link_table_for(parent_id, link_table) do
+          "#{table_for(parent_id)}_#{link_table}"
+        end
+
+        defoverridable link_table_for: 2
       else
+        @doc false
         def shard(changeset, _parent_id), do: changeset
+
+        @doc false
         def table_for(_parent_id), do: unquote(table)
+
+        @doc false
+        def link_table_for(_parent_id, link_table), do: link_table
       end
 
       schema unquote(table) do

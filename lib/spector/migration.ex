@@ -34,6 +34,20 @@ defmodule Spector.Migration do
   end
   ```
 
+  When combining shards with links, a link table is created for each shard by
+  concatenating the shard name to the link table name. For example:
+
+  ```elixir
+  Spector.Migration.up(
+    shards: ["events_0", "events_1"],
+    links: [{"ancestors", :ancestor_id}]
+  )
+  ```
+
+  This creates four tables: `events_0`, `events_1`, `events_0_ancestors`, and
+  `events_1_ancestors`. If you need a different naming convention, omit the
+  `:links` option and use `link_up/2` separately for each shard.
+
   ## With Hash Chain Integrity
 
   If using hashed events, include the `:hashed` option:
@@ -111,8 +125,10 @@ defmodule Spector.Migration do
   See module documentation for available options.
   """
   def up(opts) do
-    tables = Keyword.get(opts, :shards) || [Keyword.fetch!(opts, :table)]
+    shards = Keyword.get(opts, :shards)
+    tables = shards || [Keyword.fetch!(opts, :table)]
     hashed = Keyword.get(opts, :hashed, false)
+    links = Keyword.get(opts, :links, [])
 
     for table <- tables do
       create table(table, primary_key: false) do
@@ -133,11 +149,24 @@ defmodule Spector.Migration do
       create(index(table, [:parent_id]))
     end
 
-    events_table = List.first(tables)
-
-    for link <- Keyword.get(opts, :links, []) do
-      link_up(events_table, link)
+    for link <- links do
+      if shards do
+        # Create a link table for each shard with concatenated name
+        for shard <- shards do
+          link_up(shard, prefix_link(link, shard))
+        end
+      else
+        link_up(List.first(tables), link)
+      end
     end
+  end
+
+  defp prefix_link({link_table, foreign_key}, shard) do
+    {"#{shard}_#{link_table}", foreign_key}
+  end
+
+  defp prefix_link({link_table, foreign_key, opts}, shard) do
+    {"#{shard}_#{link_table}", foreign_key, opts}
   end
 
   @doc """
@@ -146,11 +175,19 @@ defmodule Spector.Migration do
   Pass the same options used in `up/1` to ensure link tables are also dropped.
   """
   def down(opts) do
-    for link <- Keyword.get(opts, :links, []) do
-      link_down(link)
-    end
+    shards = Keyword.get(opts, :shards)
+    tables = shards || [Keyword.fetch!(opts, :table)]
+    links = Keyword.get(opts, :links, [])
 
-    tables = Keyword.get(opts, :shards) || [Keyword.fetch!(opts, :table)]
+    for link <- links do
+      if shards do
+        for shard <- shards do
+          link_down(prefix_link(link, shard))
+        end
+      else
+        link_down(link)
+      end
+    end
 
     for table <- tables do
       drop(table(table))
