@@ -113,7 +113,7 @@ defmodule Spector do
     use Spector.Evented, events: MyApp.Events, actions: [:archive]
 
     def changeset(changeset, attrs) when changeset.action == :archive do
-      Ecto.Changeset.change(changeset, archived_at: attrs[:archived_at])
+      Ecto.Changeset.change(changeset, archived_at: Spector.get_attr(attrs, :archived_at))
     end
 
     def changeset(changeset, attrs) do
@@ -135,7 +135,7 @@ defmodule Spector do
 
     # Migrate v0 events (with :title) to v1 (with :name)
     def changeset(changeset, attrs) when version_is(attrs, 0) do
-      attrs = Map.put(attrs, "name", attrs["title"])
+      attrs = Map.put(attrs, "name", Spector.get_attr(attrs, :title))
       do_changeset(changeset, attrs)
     end
 
@@ -605,6 +605,72 @@ defmodule Spector do
 
       _ ->
         changeset
+    end
+  end
+
+  @doc """
+  Fetches a field from attrs, checking both atom and string keys.
+
+  Returns `{:ok, value}` if the key exists, or `:error` if not found.
+
+  This is useful in changesets where attrs may come with string keys (from JSON)
+  or atom keys (from internal calls).
+
+  ## Example
+
+      def changeset(record, attrs) do
+        case Spector.fetch_attr(attrs, :parent_id) do
+          {:ok, parent_id} -> # handle parent_id
+          :error -> # no parent_id provided
+        end
+      end
+  """
+  @spec fetch_attr(attrs(), atom()) :: {:ok, any()} | :error
+  def fetch_attr(attrs, key) when is_atom(key) do
+    case attrs do
+      %{^key => value} -> {:ok, value}
+      _ -> Map.fetch(attrs, Atom.to_string(key))
+    end
+  end
+
+  @doc """
+  Fetches a field from attrs, checking both atom and string keys.
+
+  Returns the value if the key exists, or raises `KeyError` if not found.
+
+  ## Example
+
+      def changeset(record, attrs) do
+        parent_id = Spector.fetch_attr!(attrs, :parent_id)
+        # use parent_id
+      end
+  """
+  @spec fetch_attr!(attrs(), atom()) :: any()
+  def fetch_attr!(attrs, key) when is_atom(key) do
+    case fetch_attr(attrs, key) do
+      {:ok, value} -> value
+      :error -> raise KeyError, key: key, term: attrs
+    end
+  end
+
+  @doc """
+  Gets a field from attrs, checking both atom and string keys.
+
+  Returns the value if the key exists, or `default` if not found.
+
+  ## Example
+
+      def changeset(record, attrs) do
+        parent_id = Spector.get_attr(attrs, :parent_id, nil)
+        # use parent_id, which may be nil
+      end
+  """
+  @spec get_attr(attrs(), atom()) :: any()
+  @spec get_attr(attrs(), atom(), any()) :: any()
+  def get_attr(attrs, key, default \\ nil) when is_atom(key) do
+    case fetch_attr(attrs, key) do
+      {:ok, value} -> value
+      :error -> default
     end
   end
 
