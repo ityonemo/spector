@@ -154,7 +154,32 @@ defmodule Spector.Evented do
             ) ::
               Ecto.Changeset.t()
 
-  @optional_callbacks [prepare_event: 3]
+  @doc """
+  Convert the current record state into an attrs map for a savepoint event.
+
+  Called by `Spector.savepoint/1` to capture the full state of a record.
+  When replaying events, savepoints allow starting from an intermediate state
+  instead of replaying from the beginning.
+
+  ```elixir
+  @behaviour Spector.Evented
+
+  @impl true
+  def savepoint(record) do
+    %{
+      name: record.name,
+      email: record.email,
+      status: record.status
+    }
+  end
+  ```
+
+  The returned attrs map should contain all fields needed to reconstruct
+  the record's state at this point.
+  """
+  @callback savepoint(record :: struct()) :: map()
+
+  @optional_callbacks [prepare_event: 3, savepoint: 1]
 
   @doc """
   Creates a has_many association to the event log for this record.

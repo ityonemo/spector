@@ -499,6 +499,71 @@ defmodule Spector do
   end
 
   @doc """
+  Create a savepoint event capturing the current state of a record.
+
+  Returns `{:ok, struct}` on success or `{:error, reason}` on failure.
+
+  Savepoints store the complete state of a record at a point in time, allowing
+  event replay to start from the savepoint instead of replaying all events
+  from the beginning. This is useful for records with long event histories.
+
+  The schema must implement the `savepoint/1` callback to define how the
+  current state is converted to an attrs map.
+
+  ## Example
+
+      # In your schema:
+      @behaviour Spector.Evented
+
+      @impl true
+      def savepoint(record) do
+        %{name: record.name, email: record.email}
+      end
+
+      # Then create savepoints:
+      {:ok, user} = Spector.savepoint(user)
+  """
+  @spec savepoint(evented_struct()) :: {:ok, evented_struct()} | {:error, term()}
+  def savepoint(object) do
+    schema = object.__struct__
+
+    if function_exported?(schema, :savepoint, 1) do
+      events = schema.__spector__(:events)
+      repo = get_repo(schema, events)
+      [pk_field] = schema.__schema__(:primary_key)
+      parent_id = Map.fetch!(object, pk_field)
+
+      attrs = schema.savepoint(object)
+      version = schema.__spector__(:version)
+
+      repo.transact(fn ->
+        id = UUIDv7.generate()
+
+        payload =
+          attrs
+          |> Map.put(:__version__, version)
+          |> Map.put(:__event_id__, id)
+
+        event_attrs = %{
+          id: id,
+          parent_id: parent_id,
+          schema: schema,
+          action: :savepoint,
+          payload: payload
+        }
+
+        event_attrs = maybe_add_hash(events, event_attrs, parent_id)
+
+        with {:ok, _event} <- repo.insert(events.changeset(event_attrs)) do
+          {:ok, object}
+        end
+      end)
+    else
+      {:error, :savepoint_not_implemented}
+    end
+  end
+
+  @doc """
   Execute an action on a record, creating an event in the event log.
 
   This is the general-purpose function for applying any action to a record,

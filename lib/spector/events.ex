@@ -222,7 +222,7 @@ defmodule Spector.Events do
   """
   @callback link_table_for(parent_id :: binary(), link_table :: String.t()) :: String.t()
 
-  @base_actions [insert: 1, update: 2, delete: 3]
+  @base_actions [insert: 1, update: 2, delete: 3, savepoint: 4]
 
   defp index_schemas(schemas, caller) do
     elem(

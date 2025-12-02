@@ -7,7 +7,8 @@ defmodule SpectorTest.Event do
       {SpectorTest.Custom, 10},
       SpectorTest.Chat,
       SpectorTest.BringupSchema,
-      SpectorTest.CustomPK
+      SpectorTest.CustomPK,
+      SpectorTest.Savepointable
     ],
     repo: SpectorTest.Repo
 end
