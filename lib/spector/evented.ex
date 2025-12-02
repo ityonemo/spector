@@ -42,7 +42,7 @@ defmodule Spector.Evented do
     # Handle the archive action
     def changeset(changeset, attrs) when changeset.action == :archive do
       changeset
-      |> Ecto.Changeset.change(archived_at: attrs[:archived_at])
+      |> Ecto.Changeset.change(archived_at: Spector.get_attr(attrs, :archived_at))
     end
 
     # Handle other actions
@@ -76,7 +76,7 @@ defmodule Spector.Evented do
 
     # Migrate v0 events (with :title) to v1 (with :name)
     def changeset(changeset, attrs) when version_is(attrs, 0) do
-      attrs = Map.put(attrs, "name", attrs["title"])
+      attrs = Map.put(attrs, "name", Spector.get_attr(attrs, :title))
       do_changeset(changeset, attrs)
     end
 
