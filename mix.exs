@@ -8,7 +8,7 @@ defmodule Spector.MixProject do
     [
       app: :spector,
       version: @version,
-      elixir: "~> 1.15",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -36,6 +36,7 @@ defmodule Spector.MixProject do
       {:ecto_sql, "~> 3.12"},
       {:uuidv7, "~> 1.0"},
       {:postgrex, "~> 0.19", only: :test},
+      {:stream_data, "~> 1.0", only: :test},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false}
     ]
   end

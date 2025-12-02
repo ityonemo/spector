@@ -9,8 +9,6 @@ defmodule Spector.Integrity do
   import Ecto.Query
   alias Ecto.Changeset
 
-  @json_library if Code.ensure_loaded?(Jason), do: Jason, else: JSON
-
   @doc """
   Verify all savepoints for a record match the expected state at that point.
 
@@ -186,9 +184,9 @@ defmodule Spector.Integrity do
 
   defp compute_hash(prev_hash, event) do
     prev_hash_hex = if prev_hash, do: "#{Base.encode16(prev_hash, case: :lower)}:", else: ""
-    # Normalize payload to atom keys and sort for consistent JSON encoding
+    # Normalize payload to atom keys to match the original encoding order
     normalized_payload = normalize_payload_keys(event.payload)
-    payload_json = @json_library.encode!(normalized_payload)
+    payload_json = Spector._json_encode!(normalized_payload)
     data = "#{prev_hash_hex}#{event.schema}.#{event.action}#{payload_json}"
     :crypto.hash(:sha256, data)
   end

@@ -784,13 +784,21 @@ defmodule Spector do
     end
   end
 
-  @json_library if Code.ensure_loaded?(Jason), do: Jason, else: JSON
+  @doc false
+  def _json_encode!(data), do: JSON.encode!(data, &spector_encoder/2)
 
-  defp json_encode!(data), do: @json_library.encode!(data)
+  defp spector_encoder(map, encoder) when is_map(map) and not is_struct(map) do
+    map
+    |> Enum.map(fn {k, v} -> {to_string(k), v} end)
+    |> Enum.sort()
+    |> :json.encode_key_value_list(encoder)
+  end
+
+  defp spector_encoder(value, encoder), do: JSON.protocol_encode(value, encoder)
 
   defp compute_hash(prev_hash, event_attrs) do
     prev_hash_hex = if prev_hash, do: "#{Base.encode16(prev_hash, case: :lower)}:", else: ""
-    payload_json = json_encode!(event_attrs.payload)
+    payload_json = _json_encode!(event_attrs.payload)
     data = "#{prev_hash_hex}#{event_attrs.schema}.#{event_attrs.action}#{payload_json}"
     :crypto.hash(:sha256, data)
   end
