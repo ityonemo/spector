@@ -11,7 +11,7 @@ Add `spector` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:spector, "~> 0.5.0"}
+    {:spector, "~> 0.6.0"}
   ]
 end
 ```
@@ -126,6 +126,27 @@ defmodule MyApp.User do
 end
 ```
 
+### Savepoints
+
+Capture full record state at specific points for faster replay:
+
+```elixir
+defmodule MyApp.User do
+  @behaviour Spector.Evented
+  use Spector.Evented, events: MyApp.Events
+
+  @impl true
+  def savepoint(record) do
+    %{name: record.name, email: record.email}
+  end
+end
+
+# Create a savepoint
+{:ok, user} = Spector.savepoint(user)
+```
+
+When replaying events, Spector starts from the most recent savepoint instead of the beginning, improving performance for records with long histories.
+
 ### Hash Chain Integrity
 
 Enable tamper-evident event logs with cryptographic hashing:
@@ -138,6 +159,18 @@ defmodule MyApp.Events do
     repo: MyApp.Repo,
     hashed: true
 end
+```
+
+### Integrity Verification
+
+Verify the integrity of your event logs:
+
+```elixir
+# Verify all savepoints for a record
+:ok = Spector.Integrity.verify_savepoints(MyApp.User, user_id)
+
+# Verify hash chain for entire events table
+:ok = Spector.Integrity.verify_hash_chain(MyApp.Events)
 ```
 
 ### Explicit Schema Indexing
