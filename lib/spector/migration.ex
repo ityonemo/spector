@@ -78,7 +78,9 @@ defmodule Spector.Migration do
   ```
 
   Each link tuple creates a join table with `event_id` and the specified foreign key,
-  along with indexes for efficient queries.
+  along with indexes for efficient queries. A database trigger enforces that both
+  ends of a link must have the same `parent_id` (i.e., links can only connect events
+  within the same record).
 
   ## Typed Link Tables
 
@@ -208,6 +210,8 @@ defmodule Spector.Migration do
 
   * `:typed` - Add a `type` integer column to distinguish different relationship types
     on the same link table (default: `false`)
+  * `:constrained` - Create a database trigger to enforce that linked events share the
+    same `parent_id` (default: `true`). Set to `false` for non-PostgreSQL databases.
 
   ## Examples
 
@@ -218,6 +222,10 @@ defmodule Spector.Migration do
   Link table with type column:
 
       Spector.Migration.link_up("events", {"event_links", :linked_id, typed: true})
+
+  Link table without parent_id constraint (for non-PostgreSQL databases):
+
+      Spector.Migration.link_up("events", {"event_links", :linked_id, constrained: false})
   """
   def link_up(events_table, {link_table, foreign_key}) do
     link_up(events_table, {link_table, foreign_key, []})
@@ -225,6 +233,7 @@ defmodule Spector.Migration do
 
   def link_up(events_table, {link_table, foreign_key, opts}) do
     typed = Keyword.get(opts, :typed, false)
+    constrained = Keyword.get(opts, :constrained, true)
 
     create table(link_table, primary_key: false) do
       add(:event_id, references(events_table, type: :binary_id, on_delete: :delete_all),
@@ -248,6 +257,36 @@ defmodule Spector.Migration do
     else
       create(unique_index(link_table, [:event_id, foreign_key]))
     end
+
+    if constrained do
+      # Create trigger to enforce same parent_id constraint
+      execute """
+      CREATE OR REPLACE FUNCTION check_link_same_parent_#{link_table}()
+      RETURNS TRIGGER AS $$
+      DECLARE
+        event_parent_id uuid;
+        linked_parent_id uuid;
+      BEGIN
+        SELECT parent_id INTO event_parent_id FROM #{events_table} WHERE id = NEW.event_id;
+        SELECT parent_id INTO linked_parent_id FROM #{events_table} WHERE id = NEW.#{foreign_key};
+
+        IF event_parent_id != linked_parent_id THEN
+          RAISE EXCEPTION 'Link events must have the same parent_id: % != %',
+            event_parent_id, linked_parent_id;
+        END IF;
+
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      """
+
+      execute """
+      CREATE TRIGGER enforce_same_parent_#{link_table}
+        BEFORE INSERT ON #{link_table}
+        FOR EACH ROW
+        EXECUTE FUNCTION check_link_same_parent_#{link_table}();
+      """
+    end
   end
 
   @doc """
@@ -257,11 +296,18 @@ defmodule Spector.Migration do
 
       Spector.Migration.link_down({"event_ancestors", :ancestor_id})
   """
-  def link_down({link_table, _foreign_key}) do
-    drop(table(link_table))
+  def link_down({link_table, foreign_key}) do
+    link_down({link_table, foreign_key, []})
   end
 
-  def link_down({link_table, _foreign_key, _opts}) do
+  def link_down({link_table, _foreign_key, opts}) do
+    constrained = Keyword.get(opts, :constrained, true)
+
+    if constrained do
+      execute "DROP TRIGGER IF EXISTS enforce_same_parent_#{link_table} ON #{link_table}"
+      execute "DROP FUNCTION IF EXISTS check_link_same_parent_#{link_table}()"
+    end
+
     drop(table(link_table))
   end
 end
