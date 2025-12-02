@@ -786,9 +786,11 @@ defmodule Spector do
 
   @json_library if Code.ensure_loaded?(Jason), do: Jason, else: JSON
 
+  defp json_encode!(data), do: @json_library.encode!(data)
+
   defp compute_hash(prev_hash, event_attrs) do
     prev_hash_hex = if prev_hash, do: "#{Base.encode16(prev_hash, case: :lower)}:", else: ""
-    payload_json = @json_library.encode!(event_attrs.payload)
+    payload_json = json_encode!(event_attrs.payload)
     data = "#{prev_hash_hex}#{event_attrs.schema}.#{event_attrs.action}#{payload_json}"
     :crypto.hash(:sha256, data)
   end
