@@ -6,13 +6,13 @@ defmodule SpectorTest.Basic do
   schema "basic" do
     field(:name, :string)
     field(:value, :integer)
-    event_log(:log)
     timestamps()
+    event_log(:log)
   end
 
   def changeset(changeset, attrs) do
     changeset
-    |> Changeset.cast(attrs, [:name, :value])
+    |> Changeset.cast(attrs, [:name, :value, :inserted_at, :updated_at])
     |> Changeset.validate_required([:name])
   end
 end

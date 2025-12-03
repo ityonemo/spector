@@ -144,11 +144,12 @@ defmodule Spector.Migration do
           add(:hash, :binary)
         end
 
-        timestamps(type: :utc_datetime_usec)
+        timestamps(type: :utc_datetime_usec, updated_at: false)
       end
 
       create(index(table, [:schema]))
       create(index(table, [:parent_id]))
+      create(index(table, [:inserted_at]))
     end
 
     for link <- links do

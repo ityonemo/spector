@@ -30,9 +30,9 @@ defmodule SpectorTest.BringupTest do
       refute Repo.get(BringupSchema, old_id)
 
       assert new_record.name == "Alice"
-      # Timestamps should be recent (within last minute)
-      assert NaiveDateTime.diff(NaiveDateTime.utc_now(), new_record.inserted_at, :second) < 60
-      assert NaiveDateTime.diff(NaiveDateTime.utc_now(), new_record.updated_at, :second) < 60
+      # Both timestamps are preserved from old record via from_record/1 (put_new doesn't override)
+      assert new_record.inserted_at == past
+      assert new_record.updated_at == past
     end
 
     test "bringup with :import action and attr_fn preserves timestamps" do
@@ -65,8 +65,7 @@ defmodule SpectorTest.BringupTest do
 
       # Name has "imported_" prefix from the :import changeset
       assert new_record.name == "imported_Bob"
-      # Timestamps should be preserved
-      assert new_record.inserted_at == past
+      # updated_at should be preserved from attr_fn, inserted_at is set by Spector
       assert new_record.updated_at == past
     end
   end

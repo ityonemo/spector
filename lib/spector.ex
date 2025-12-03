@@ -231,11 +231,18 @@ defmodule Spector do
     repo = get_repo(schema, events)
     version = schema.__spector__(:version)
     id = UUIDv7.generate()
+    # TODO: in the future we might want to support alternative timestamp field names
+    now = DateTime.utc_now()
 
+    # inserted_at and updated_at are put_new so that we may override them for bringup operations
+    # (we want the object to be branded with its original timestamps). The event will still have
+    # the accurate inserted_at timestamp.
     attrs =
       attrs
       |> Map.put(:__version__, version)
       |> Map.put(:__event_id__, id)
+      |> Map.put_new(:inserted_at, now)
+      |> Map.put_new(:updated_at, now)
 
     changeset =
       schema
@@ -246,7 +253,7 @@ defmodule Spector do
 
     if changeset.valid? do
       repo.transact(fn ->
-        event_attrs = %{id: id, parent_id: id, schema: schema, action: action, payload: attrs}
+        event_attrs = %{id: id, parent_id: id, schema: schema, action: action, payload: attrs, inserted_at: now}
         event_attrs = maybe_add_hash(events, event_attrs, id)
         [pk_field] = schema.__schema__(:primary_key)
         object_changeset = Changeset.put_change(changeset, pk_field, id)
@@ -559,8 +566,9 @@ defmodule Spector do
 
     repo.transact(fn ->
       id = UUIDv7.generate()
+      now = DateTime.utc_now()
 
-      event_attrs = %{id: id, parent_id: parent_id, schema: schema, action: :delete, payload: %{}}
+      event_attrs = %{id: id, parent_id: parent_id, schema: schema, action: :delete, payload: %{}, inserted_at: now}
       event_attrs = maybe_add_hash(events, event_attrs, parent_id)
 
       with {:ok, _event} <- repo.insert(events.changeset(event_attrs)),
@@ -613,12 +621,11 @@ defmodule Spector do
   Use this form when you don't have the record in memory or don't need
   stale record detection.
   """
-  def savepoint(record) when is_struct(record), do: do_savepoint(record.__struct__, nil, record, [])
-  def savepoint(record, opts) when is_struct(record) and is_list(opts), do: do_savepoint(record.__struct__, nil, record, opts)
-  def savepoint(schema, id) when is_atom(schema), do: do_savepoint(schema, id, nil, [])
+  def savepoint(record) when is_struct(record), do: do_savepoint(record.__struct__, nil, record)
+  def savepoint(schema, id) when is_atom(schema), do: do_savepoint(schema, id, nil)
 
-  @spec do_savepoint(module(), Ecto.UUID.t() | nil, evented_struct() | nil, keyword()) :: {:ok, evented_struct()} | {:error, term()}
-  defp do_savepoint(schema, id, reference_record, opts) do
+  @spec do_savepoint(module(), Ecto.UUID.t() | nil, evented_struct() | nil) :: {:ok, evented_struct()} | {:error, term()}
+  defp do_savepoint(schema, id, reference_record) do
     if not function_exported?(schema, :savepoint, 2), do: raise "Schema #{inspect(schema)} must implement savepoint/2 callback"
     events_module = schema.__spector__(:events)
     version = schema.__spector__(:version)
@@ -636,9 +643,10 @@ defmodule Spector do
         |> repo.all()
         |> roll_forward()
         |> Changeset.apply_changes()
-        |> verify_record!(reference_record, opts)
+        |> verify_record!(reference_record)
 
       event_id = UUIDv7.generate()
+      now = DateTime.utc_now()
 
       payload =
         record
@@ -651,7 +659,8 @@ defmodule Spector do
         parent_id: id,
         schema: schema,
         action: :savepoint,
-        payload: payload
+        payload: payload,
+        inserted_at: now
       }
 
       events_module.changeset(event_attrs)
@@ -661,11 +670,9 @@ defmodule Spector do
     end)
   end
 
-  defp verify_record!(record, nil, _), do: record
-  defp verify_record!(record, reference_record, opts) do
-    fields = Keyword.get_lazy(opts, :fields, fn ->
-      record.__struct__.__schema__(:fields) -- ~w[inserted_at updated_at]a
-    end)
+  defp verify_record!(record, nil), do: record
+  defp verify_record!(record, reference_record) do
+    fields = record.__struct__.__schema__(:fields)
     if Map.take(record, fields) != Map.take(reference_record, fields) do
       raise "Savepoint record does not match reference record"
     end
@@ -702,11 +709,14 @@ defmodule Spector do
     parent_id = Map.fetch!(object, pk_field)
     version = schema.__spector__(:version)
     id = UUIDv7.generate()
+    # TODO: in the future we might want to support alternative timestamp field names
+    now = DateTime.utc_now()
 
     attrs =
       attrs
       |> Map.put(:__version__, version)
       |> Map.put(:__event_id__, id)
+      |> Map.put(:updated_at, now)
 
     # Roll forward from events to get current state
     previous_events = recent_events(schema, parent_id)
@@ -725,7 +735,8 @@ defmodule Spector do
           parent_id: parent_id,
           schema: schema,
           action: action,
-          payload: attrs
+          payload: attrs,
+          inserted_at: now
         }
 
         event_attrs = maybe_add_hash(events_module, event_attrs, parent_id)

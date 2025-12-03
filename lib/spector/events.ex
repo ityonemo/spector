@@ -360,10 +360,10 @@ defmodule Spector.Events do
           end
         end
 
-        timestamps(type: :utc_datetime_usec)
+        timestamps(type: :utc_datetime_usec, updated_at: false)
       end
 
-      @required_fields ~w[id parent_id schema action]a ++ unquote(hash_field)
+      @required_fields ~w[id parent_id schema action inserted_at]a ++ unquote(hash_field)
       @all_fields @required_fields ++ ~w[payload]a
 
       def changeset(struct \\ %__MODULE__{}, attrs) do

@@ -19,7 +19,7 @@ defmodule SpectorTest.BringupSchema do
 
   def changeset(changeset, attrs) do
     changeset
-    |> Changeset.cast(attrs, [:name, :value])
+    |> Changeset.cast(attrs, [:name, :value, :inserted_at, :updated_at])
     |> Changeset.validate_required([:name])
   end
 end

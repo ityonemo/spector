@@ -14,7 +14,7 @@ defmodule SpectorTest.Savepointable do
 
   def changeset(changeset, attrs) do
     changeset
-    |> Changeset.cast(attrs, [:name, :value, :bugged])
+    |> Changeset.cast(attrs, [:name, :value, :bugged, :inserted_at, :updated_at])
     |> Changeset.validate_required([:name])
   end
 
@@ -23,7 +23,9 @@ defmodule SpectorTest.Savepointable do
     # BUG: intentionally omits :bugged field to test integrity verification
     %{
       name: record.name,
-      value: record.value
+      value: record.value,
+      inserted_at: record.inserted_at,
+      updated_at: record.updated_at
     }
   end
 end

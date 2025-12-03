@@ -11,15 +11,23 @@ defmodule Spector.Evented do
 
     schema "users" do
       field :name, :string
+      timestamps()
     end
 
     def changeset(changeset, attrs) do
       changeset
-      |> Ecto.Changeset.cast(attrs, [:name])
+      |> Ecto.Changeset.cast(attrs, [:name, :inserted_at, :updated_at])
       |> Ecto.Changeset.validate_required([:name])
     end
   end
   ```
+
+  > #### Timestamps in Changesets {: .warning}
+  >
+  > Always include `inserted_at` and `updated_at` in your changeset's cast fields
+  > when using `timestamps()`. Spector stores these values in event payloads to
+  > ensure proper timestamp replay. Without casting them, replayed events won't
+  > restore original timestamps.
 
   ## Options
 
@@ -39,6 +47,13 @@ defmodule Spector.Evented do
       events: MyApp.Events,
       actions: [:archive, :restore]
 
+    schema "items" do
+      field :name, :string
+      field :value, :integer
+      field :archived_at, :utc_datetime_usec
+      timestamps()
+    end
+
     # Handle the archive action
     def changeset(changeset, attrs) when changeset.action == :archive do
       changeset
@@ -48,7 +63,7 @@ defmodule Spector.Evented do
     # Handle other actions
     def changeset(changeset, attrs) do
       changeset
-      |> Ecto.Changeset.cast(attrs, [:name, :value])
+      |> Ecto.Changeset.cast(attrs, [:name, :value, :inserted_at, :updated_at])
     end
   end
   ```
@@ -72,6 +87,7 @@ defmodule Spector.Evented do
 
     schema "users" do
       field :name, :string
+      timestamps()
     end
 
     # Migrate v0 events (with :title) to v1 (with :name)
@@ -84,7 +100,7 @@ defmodule Spector.Evented do
 
     defp do_changeset(changeset, attrs) do
       changeset
-      |> Ecto.Changeset.cast(attrs, [:name])
+      |> Ecto.Changeset.cast(attrs, [:name, :inserted_at, :updated_at])
       |> Ecto.Changeset.validate_required([:name])
     end
   end

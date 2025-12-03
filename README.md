@@ -39,11 +39,12 @@ defmodule MyApp.User do
   schema "users" do
     field :name, :string
     field :email, :string
+    timestamps()
   end
 
   def changeset(changeset, attrs) do
     changeset
-    |> Ecto.Changeset.cast(attrs, [:name, :email])
+    |> Ecto.Changeset.cast(attrs, [:name, :email, :inserted_at, :updated_at])
     |> Ecto.Changeset.validate_required([:name, :email])
   end
 end
@@ -94,13 +95,21 @@ Define domain-specific actions beyond insert/update/delete:
 ```elixir
 defmodule MyApp.Item do
   use Spector.Evented, events: MyApp.Events, actions: [:archive]
+  use Ecto.Schema
+
+  schema "items" do
+    field :name, :string
+    field :value, :integer
+    field :archived_at, :utc_datetime_usec
+    timestamps()
+  end
 
   def changeset(changeset, attrs) when changeset.action == :archive do
     Ecto.Changeset.change(changeset, archived_at: attrs[:archived_at])
   end
 
   def changeset(changeset, attrs) do
-    Ecto.Changeset.cast(changeset, attrs, [:name, :value])
+    Ecto.Changeset.cast(changeset, attrs, [:name, :value, :inserted_at, :updated_at])
   end
 end
 
@@ -115,6 +124,12 @@ Handle schema migrations with version guards:
 ```elixir
 defmodule MyApp.User do
   use Spector.Evented, events: MyApp.Events, version: 1
+  use Ecto.Schema
+
+  schema "users" do
+    field :name, :string
+    timestamps()
+  end
 
   # Migrate v0 events (with :title) to v1 (with :name)
   def changeset(changeset, attrs) when version_is(attrs, 0) do
@@ -123,6 +138,10 @@ defmodule MyApp.User do
   end
 
   def changeset(changeset, attrs), do: do_changeset(changeset, attrs)
+
+  defp do_changeset(changeset, attrs) do
+    Ecto.Changeset.cast(changeset, attrs, [:name, :inserted_at, :updated_at])
+  end
 end
 ```
 
