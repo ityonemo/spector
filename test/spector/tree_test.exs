@@ -1,12 +1,13 @@
 defmodule SpectorTest.TreeTest do
   use ExUnit.Case
 
+  alias Ecto.Adapters.SQL.Sandbox
+  alias SpectorTest.Repo
   alias SpectorTest.TreeChat
   alias SpectorTest.TreeEvent
-  alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "tree chat with append" do

@@ -1,4 +1,5 @@
 defmodule SpectorTest.Event do
+  @moduledoc false
   use Spector.Events,
     table: "events",
     schemas: [

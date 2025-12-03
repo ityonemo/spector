@@ -1,4 +1,5 @@
 defmodule SpectorTest.TestTemplate do
+  @moduledoc false
   def execute(module, test_blocks) do
     combined =
       test_blocks

@@ -1,4 +1,5 @@
 defmodule SpectorTest.Hashed do
+  @moduledoc false
   use Spector.Evented, events: SpectorTest.HashedEvent
   use Ecto.Schema
 

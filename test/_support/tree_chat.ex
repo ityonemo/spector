@@ -1,4 +1,5 @@
 defmodule SpectorTest.TreeChat do
+  @moduledoc false
   @behaviour Spector.Evented
   use Spector.Evented, events: SpectorTest.TreeEvent, actions: [:append]
   use Ecto.Schema

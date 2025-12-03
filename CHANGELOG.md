@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.0
+
+### Savepoints
+- `savepoint/2` callback for capturing full record state at a point in time
+- `Spector.savepoint/1` and `Spector.savepoint/2` to create savepoint events
+- Replay optimization: starts from most recent savepoint instead of beginning
+- `Spector.Integrity.verify_savepoints/2` to verify savepoint correctness
+
+### Integrity Verification
+- `Spector.Integrity` module for event log verification
+- `Spector.Integrity.verify_hash_chain/1` to verify hash chain integrity
+- Deterministic JSON encoding with sorted keys for consistent hashing
+
+### Link Tables
+- Typed link tables with schema module support for custom fields on links
+- Sharding support for link tables
+- Database trigger to enforce `parent_id` constraint on links
+
+### API Improvements
+- `Spector.get_attr/2`, `Spector.fetch_attr/2`, `Spector.fetch_attr!/2` helpers for accessing attrs
+- Moved `all_events/2` and `all_record_ids/1` from Events module to `Spector`
+- Events table now has `updated_at: false` (events are immutable)
+- Insert sets both `inserted_at` and `updated_at`; execute/update sets `updated_at`
+- Added index on `events.inserted_at` for ordering queries
+
 ## 0.5.0
 
 - `Spector.bringup/2` now accepts keyword options instead of positional arguments

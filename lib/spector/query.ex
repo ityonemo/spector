@@ -1,7 +1,5 @@
-defmodule Spector.Queries do
-  @moduledoc """
-  Query functions for retrieving events from event logs.
-  """
+defmodule Spector.Query do
+  @moduledoc false
 
   import Ecto.Query
 
@@ -12,17 +10,17 @@ defmodule Spector.Queries do
 
   ## Example
 
-      events = Spector.Queries.all_events(MyApp.User, user_id)
+      events = Spector.Query.all_events(MyApp.User, user_id)
   """
   @spec all_events(module(), Ecto.UUID.t()) :: Ecto.Query.t()
   def all_events(schema, parent_id) do
     events_module = schema.__spector__(:events)
     table = events_module.table_for(parent_id)
 
-      from(e in {table, events_module},
-        where: e.parent_id == ^parent_id and e.schema == ^schema,
-        order_by: [asc: e.inserted_at]
-      )
+    from(e in {table, events_module},
+      where: e.parent_id == ^parent_id and e.schema == ^schema,
+      order_by: [asc: e.inserted_at]
+    )
   end
 
   @doc """
@@ -35,7 +33,7 @@ defmodule Spector.Queries do
 
   ## Example
 
-      events = Repo.all(Spector.Queries.recent_events(MyApp.User, user_id))
+      events = Repo.all(Spector.Query.recent_events(MyApp.User, user_id))
   """
   @spec recent_events(module(), Ecto.UUID.t()) :: Ecto.Query.t()
   def recent_events(schema, parent_id) do
@@ -70,7 +68,7 @@ defmodule Spector.Queries do
 
   ## Example
 
-      record_ids = Repo.all(Spector.Queries.all_record_ids(MyApp.User))
+      record_ids = Repo.all(Spector.Query.all_record_ids(MyApp.User))
   """
   @spec all_record_ids(module()) :: Ecto.Query.t()
   def all_record_ids(schema) do
@@ -91,7 +89,7 @@ defmodule Spector.Queries do
 
   ## Example
 
-      events = Repo.all(Spector.Queries.previous_events(MyApp.Events, record_id, event_id))
+      events = Repo.all(Spector.Query.previous_events(MyApp.Events, record_id, event_id))
   """
   @spec previous_events(module(), Ecto.UUID.t(), Ecto.UUID.t()) :: Ecto.Query.t()
   def previous_events(events_module, parent_id, event_id) do
@@ -116,7 +114,7 @@ defmodule Spector.Queries do
 
   ## Example
 
-      last_hash = Repo.one(Spector.Queries.last_hash(MyApp.Events, parent_id))
+      last_hash = Repo.one(Spector.Query.last_hash(MyApp.Events, parent_id))
   """
   @spec last_hash(module(), Ecto.UUID.t()) :: Ecto.Query.t()
   def last_hash(events_module, parent_id) do
@@ -126,6 +124,44 @@ defmodule Spector.Queries do
       order_by: [desc: e.inserted_at],
       limit: 1,
       select: e.hash
+    )
+  end
+
+  @doc """
+  Returns a query for all events in insertion order.
+
+  ## Example
+
+      events = Repo.all(Spector.Query.all_ordered(MyApp.Events))
+  """
+  @spec all_ordered(module()) :: Ecto.Query.t()
+  def all_ordered(events_module) do
+    table = events_module.__schema__(:source)
+
+    from(e in {table, events_module},
+      order_by: [asc: e.inserted_at]
+    )
+  end
+
+  @doc """
+  Returns a query for records without events (for bringup).
+
+  Finds records in the schema's table that don't have any events in the event log.
+
+  ## Example
+
+      records = Repo.all(Spector.Query.records_without_events(MyApp.User))
+  """
+  @spec records_without_events(module()) :: Ecto.Query.t()
+  def records_without_events(schema) do
+    events_module = schema.__spector__(:events)
+    events_table = events_module.__schema__(:source)
+    [pk_field] = schema.__schema__(:primary_key)
+
+    from(r in schema,
+      left_join: e in ^{events_table, events_module},
+      on: e.parent_id == field(r, ^pk_field) and e.schema == ^schema,
+      where: is_nil(e.id)
     )
   end
 end

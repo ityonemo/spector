@@ -1,4 +1,5 @@
 defmodule SpectorTest.ShardedEvent do
+  @moduledoc false
   use Spector.Events,
     table: "sharded_events_0",
     shard: :shard_for,

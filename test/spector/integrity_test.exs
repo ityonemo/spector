@@ -1,10 +1,12 @@
 defmodule SpectorTest.IntegrityTest do
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Spector.Integrity
+  alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(SpectorTest.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "verify_savepoints/2" do
@@ -34,6 +36,7 @@ defmodule SpectorTest.IntegrityTest do
 
       # Update the savepoint payload to have wrong data
       import Ecto.Query
+
       SpectorTest.Repo.update_all(
         from(e in SpectorTest.Event, where: e.id == ^savepoint_event_id),
         set: [payload: %{"name" => "Wrong", "value" => 999, "__version__" => 0}]
@@ -51,9 +54,12 @@ defmodule SpectorTest.IntegrityTest do
 
       # Corrupt the second savepoint only
       events = Spector.all_events(SpectorTest.Savepointable, id)
-      %{id: second_savepoint_event_id} = events |> Enum.filter(&(&1.action == :savepoint)) |> List.last()
+
+      %{id: second_savepoint_event_id} =
+        events |> Enum.filter(&(&1.action == :savepoint)) |> List.last()
 
       import Ecto.Query
+
       SpectorTest.Repo.update_all(
         from(e in SpectorTest.Event, where: e.id == ^second_savepoint_event_id),
         set: [payload: %{"name" => "Wrong", "value" => 999, "__version__" => 0}]
@@ -80,7 +86,10 @@ defmodule SpectorTest.IntegrityTest do
     test "detects buggy savepoint implementation that omits a field" do
       # Create record, then update the bugged field (which savepoint/2 intentionally omits)
       {:ok, %{id: id}} = Spector.insert(SpectorTest.Savepointable, %{name: "Test", value: 1})
-      {:ok, %{id: ^id}} = Spector.update(Spector.get(SpectorTest.Savepointable, id), %{bugged: "this will be lost"})
+
+      {:ok, %{id: ^id}} =
+        Spector.update(Spector.get(SpectorTest.Savepointable, id), %{bugged: "this will be lost"})
+
       {:ok, %{id: ^id}} = Spector.savepoint(SpectorTest.Savepointable, id)
 
       # Add another savepoint - this will reveal the bug because:
@@ -112,6 +121,7 @@ defmodule SpectorTest.IntegrityTest do
 
       # Get the second event and corrupt its hash
       import Ecto.Query
+
       [_, %{id: second_event_id}] =
         SpectorTest.Repo.all(from(e in SpectorTest.HashedEvent, order_by: [asc: e.inserted_at]))
 
@@ -131,6 +141,7 @@ defmodule SpectorTest.IntegrityTest do
       [%{id: event_id}] = SpectorTest.Repo.all(SpectorTest.HashedEvent)
 
       import Ecto.Query
+
       SpectorTest.Repo.update_all(
         from(e in SpectorTest.HashedEvent, where: e.id == ^event_id),
         set: [payload: %{"name" => "Tampered", "value" => 999, "__version__" => 0}]

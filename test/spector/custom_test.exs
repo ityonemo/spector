@@ -1,12 +1,13 @@
 defmodule SpectorTest.CustomTest do
   use ExUnit.Case
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.Custom
-  alias SpectorTest.Repo
   alias SpectorTest.Event
+  alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "custom actions" do

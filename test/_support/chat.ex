@@ -1,4 +1,5 @@
 defmodule SpectorTest.Chat do
+  @moduledoc false
   use Spector.Evented, events: SpectorTest.Event
   use Ecto.Schema
   alias Ecto.Changeset

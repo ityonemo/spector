@@ -1,8 +1,11 @@
 defmodule SpectorTest.ShardedLinksTest do
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
+  alias SpectorTest.Repo
+
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(SpectorTest.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "sharding + links migration" do
@@ -34,11 +37,13 @@ defmodule SpectorTest.ShardedLinksTest do
     test "returns prefixed link table name for sharded events" do
       # UUID ending in even hex goes to shard 0
       even_uuid = "00000000-0000-0000-0000-000000000000"
+
       assert SpectorTest.ShardedEvent.link_table_for(even_uuid, "ancestors") ==
                "sharded_events_0_ancestors"
 
       # UUID ending in odd hex goes to shard 1
       odd_uuid = "00000000-0000-0000-0000-000000000001"
+
       assert SpectorTest.ShardedEvent.link_table_for(odd_uuid, "ancestors") ==
                "sharded_events_1_ancestors"
     end

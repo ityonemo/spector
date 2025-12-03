@@ -1,8 +1,11 @@
 defmodule SpectorTest.SavepointTest do
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
+  alias SpectorTest.Repo
+
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(SpectorTest.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "savepoint/1" do

@@ -1,10 +1,12 @@
-defmodule SpectorTest.QueriesTest do
+defmodule SpectorTest.QueryTest do
   use ExUnit.Case, async: false
 
-  alias Spector.Queries
+  alias Ecto.Adapters.SQL.Sandbox
+  alias Spector.Query
+  alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(SpectorTest.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "all_events/2" do
@@ -13,7 +15,7 @@ defmodule SpectorTest.QueriesTest do
       {:ok, record} = Spector.update(record, %{value: 10})
       {:ok, _record} = Spector.update(record, %{value: 20})
 
-      events = SpectorTest.Repo.all(Queries.all_events(SpectorTest.Savepointable, record.id))
+      events = SpectorTest.Repo.all(Query.all_events(SpectorTest.Savepointable, record.id))
 
       assert length(events) == 3
       assert [%{action: :insert}, %{action: :update}, %{action: :update}] = events
@@ -22,7 +24,7 @@ defmodule SpectorTest.QueriesTest do
     test "returns empty list when no events exist" do
       fake_id = UUIDv7.generate()
 
-      events = SpectorTest.Repo.all(Queries.all_events(SpectorTest.Savepointable, fake_id))
+      events = SpectorTest.Repo.all(Query.all_events(SpectorTest.Savepointable, fake_id))
 
       assert events == []
     end
@@ -32,7 +34,7 @@ defmodule SpectorTest.QueriesTest do
       {:ok, record} = Spector.update(record, %{value: 10})
       {:ok, _record} = Spector.update(record, %{value: 20})
 
-      events = SpectorTest.Repo.all(Queries.all_events(SpectorTest.Savepointable, record.id))
+      events = SpectorTest.Repo.all(Query.all_events(SpectorTest.Savepointable, record.id))
 
       # Verify ordering by checking inserted_at is ascending
       inserted_ats = Enum.map(events, & &1.inserted_at)
@@ -46,7 +48,7 @@ defmodule SpectorTest.QueriesTest do
       {:ok, record} = Spector.update(record, %{value: 10})
       {:ok, _record} = Spector.update(record, %{value: 20})
 
-      events = SpectorTest.Repo.all(Queries.recent_events(SpectorTest.Savepointable, record.id))
+      events = SpectorTest.Repo.all(Query.recent_events(SpectorTest.Savepointable, record.id))
 
       assert length(events) == 3
       assert [%{action: :insert}, %{action: :update}, %{action: :update}] = events
@@ -58,7 +60,7 @@ defmodule SpectorTest.QueriesTest do
       {:ok, record} = Spector.savepoint(SpectorTest.Savepointable, record.id)
       {:ok, _record} = Spector.update(record, %{value: 20})
 
-      events = SpectorTest.Repo.all(Queries.recent_events(SpectorTest.Savepointable, record.id))
+      events = SpectorTest.Repo.all(Query.recent_events(SpectorTest.Savepointable, record.id))
 
       # Should return savepoint + update after it
       assert length(events) == 2
@@ -72,7 +74,7 @@ defmodule SpectorTest.QueriesTest do
       {:ok, record} = Spector.savepoint(SpectorTest.Savepointable, record.id)
       {:ok, _record} = Spector.update(record, %{value: 20})
 
-      events = SpectorTest.Repo.all(Queries.recent_events(SpectorTest.Savepointable, record.id))
+      events = SpectorTest.Repo.all(Query.recent_events(SpectorTest.Savepointable, record.id))
 
       # Should return only the second savepoint + update after it
       assert length(events) == 2
@@ -84,7 +86,7 @@ defmodule SpectorTest.QueriesTest do
       {:ok, record} = Spector.update(record, %{value: 10})
       {:ok, _record} = Spector.savepoint(SpectorTest.Savepointable, record.id)
 
-      events = SpectorTest.Repo.all(Queries.recent_events(SpectorTest.Savepointable, record.id))
+      events = SpectorTest.Repo.all(Query.recent_events(SpectorTest.Savepointable, record.id))
 
       assert length(events) == 1
       assert [%{action: :savepoint}] = events
@@ -93,7 +95,7 @@ defmodule SpectorTest.QueriesTest do
     test "returns empty list when no events exist" do
       fake_id = UUIDv7.generate()
 
-      events = SpectorTest.Repo.all(Queries.recent_events(SpectorTest.Savepointable, fake_id))
+      events = SpectorTest.Repo.all(Query.recent_events(SpectorTest.Savepointable, fake_id))
 
       assert events == []
     end

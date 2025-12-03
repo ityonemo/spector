@@ -1,12 +1,13 @@
 defmodule SpectorTest.EmbeddedTest do
   use ExUnit.Case
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.Chat
   alias SpectorTest.Event
   alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "embedded schema with Spector.Evented" do

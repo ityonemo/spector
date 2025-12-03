@@ -1,12 +1,13 @@
 defmodule SpectorTest.GetTest do
   use ExUnit.Case
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.Basic
   alias SpectorTest.Chat
   alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "Spector.get/2" do

@@ -1,4 +1,5 @@
 defmodule SpectorTest.Sharded do
+  @moduledoc false
   use Spector.Evented, events: SpectorTest.ShardedEvent
   use Ecto.Schema
   alias Ecto.Changeset

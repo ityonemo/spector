@@ -1,12 +1,13 @@
 defmodule SpectorTest.VersionedTest do
   use ExUnit.Case
 
-  alias SpectorTest.Versioned
-  alias SpectorTest.Repo
+  alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.Event
+  alias SpectorTest.Repo
+  alias SpectorTest.Versioned
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "versioned events" do

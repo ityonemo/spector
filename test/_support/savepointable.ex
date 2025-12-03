@@ -1,4 +1,5 @@
 defmodule SpectorTest.Savepointable do
+  @moduledoc false
   @behaviour Spector.Evented
   use Spector.Evented, events: SpectorTest.Event
   use Ecto.Schema

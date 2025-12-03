@@ -4,7 +4,7 @@ defmodule SpectorTest.JsonEncodingTest do
 
   describe "JSON encoding key order" do
     property "string key maps are encoded with keys in lexicographic order" do
-      check all map <- map_of(string(:alphanumeric, min_length: 1), integer()) do
+      check all(map <- map_of(string(:alphanumeric, min_length: 1), integer())) do
         json = Spector._json_encode!(map)
 
         # Extract all keys from the JSON by matching quoted strings followed by :

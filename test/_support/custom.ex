@@ -1,4 +1,5 @@
 defmodule SpectorTest.Custom do
+  @moduledoc false
   use Spector.Evented, events: SpectorTest.Event, actions: [:archive]
   use Ecto.Schema
   alias Ecto.Changeset

@@ -1,4 +1,5 @@
 defmodule SpectorTest.Versioned do
+  @moduledoc false
   # Version 0: field :title, :string
   use Spector.Evented, events: SpectorTest.Event, version: 1
   use Ecto.Schema

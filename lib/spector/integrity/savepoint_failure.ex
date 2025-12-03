@@ -51,10 +51,8 @@ defmodule Spector.Integrity.SavepointFailure do
   end
 
   defp format_differences(differences) do
-    differences
-    |> Enum.map(fn {field, expected, actual} ->
+    Enum.map_join(differences, "\n", fn {field, expected, actual} ->
       "  #{field}: expected #{inspect(expected)}, got #{inspect(actual)}"
     end)
-    |> Enum.join("\n")
   end
 end

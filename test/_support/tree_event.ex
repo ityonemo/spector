@@ -1,4 +1,5 @@
 defmodule SpectorTest.TreeEvent do
+  @moduledoc false
   use Spector.Events,
     table: "tree_events",
     links: [ancestors: {"tree_ancestors", :ancestor_id}],

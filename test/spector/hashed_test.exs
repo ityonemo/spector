@@ -1,12 +1,13 @@
 defmodule SpectorTest.HashedTest do
   use ExUnit.Case
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.Hashed
   alias SpectorTest.HashedEvent
   alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "hashed events" do

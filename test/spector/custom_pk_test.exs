@@ -1,12 +1,13 @@
 defmodule SpectorTest.CustomPKTest do
   use ExUnit.Case
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.CustomPK
   alias SpectorTest.Event
   alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "schema with custom primary key name" do

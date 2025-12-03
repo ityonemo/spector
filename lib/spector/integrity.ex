@@ -6,8 +6,10 @@ defmodule Spector.Integrity do
   including savepoint validation and hash chain verification.
   """
 
-  import Ecto.Query
   alias Ecto.Changeset
+  alias Spector.Integrity.HashMismatch
+  alias Spector.Integrity.SavepointFailure
+  alias Spector.Query
 
   @doc """
   Verify all savepoints for a record match the expected state at that point.
@@ -37,11 +39,13 @@ defmodule Spector.Integrity do
   @spec verify_savepoints(module(), String.t()) ::
           :ok | {:error, Spector.Integrity.SavepointFailure.t()}
   def verify_savepoints(schema, parent_id) do
-    if !function_exported?(schema, :savepoint, 2), do: raise "Schema #{inspect(schema)} must implement savepoint/2 callback"
+    if !function_exported?(schema, :savepoint, 2),
+      do: raise("Schema #{inspect(schema)} must implement savepoint/2 callback")
 
     events = Spector.all_events(schema, parent_id)
 
     [pk_field] = schema.__schema__(:primary_key)
+
     initial_changeset =
       schema
       |> struct!([{pk_field, parent_id}])
@@ -49,7 +53,7 @@ defmodule Spector.Integrity do
 
     # Start with one universe containing just the initial state.  If it makes it through the
     # whole thing, we are ok.
-    Enum.reduce(events, [initial_changeset], &apply_to_universes(&2, &1, schema, []))
+    _universes = Enum.reduce(events, [initial_changeset], &apply_to_universes(&2, &1, schema, []))
     :ok
   catch
     {:error, failure} -> {:error, failure}
@@ -87,10 +91,13 @@ defmodule Spector.Integrity do
     if expected == head_check do
       verify_integrity(rest, expected, [head_changeset | so_far])
     else
-      throw({:error, Spector.Integrity.SavepointFailure.exception(
-        expected: expected,
-        actual: head_check
-      )})
+      throw(
+        {:error,
+         SavepointFailure.exception(
+           expected: expected,
+           actual: head_check
+         )}
+      )
     end
   end
 
@@ -120,19 +127,12 @@ defmodule Spector.Integrity do
   @spec verify_hash_chain(module()) ::
           :ok | {:error, Spector.Integrity.HashMismatch.t()}
   def verify_hash_chain(events_module) do
-    if !events_module.__spector__(:hashed), do: raise "Events module #{inspect(events_module)} is not hashed"
+    if !events_module.__spector__(:hashed),
+      do: raise("Events module #{inspect(events_module)} is not hashed")
 
     repo = events_module.__spector__(:repo)
-    table = events_module.__schema__(:source)
 
-    # Stream all events ordered by insertion time
-    events =
-      repo.all(
-        from(e in {table, events_module},
-          order_by: [asc: e.inserted_at],
-          select: %{id: e.id, schema: e.schema, action: e.action, payload: e.payload, hash: e.hash}
-        )
-      )
+    events = repo.all(Query.all_ordered(events_module))
 
     verify_chain(events, nil)
   end
@@ -145,11 +145,12 @@ defmodule Spector.Integrity do
     if expected_hash == event.hash do
       verify_chain(rest, event.hash)
     else
-      {:error, Spector.Integrity.HashMismatch.exception(
-        event_id: event.id,
-        expected_hash: expected_hash,
-        actual_hash: event.hash
-      )}
+      {:error,
+       HashMismatch.exception(
+         event_id: event.id,
+         expected_hash: expected_hash,
+         actual_hash: event.hash
+       )}
     end
   end
 

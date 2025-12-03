@@ -373,7 +373,6 @@ defmodule Spector.Events do
         |> Changeset.foreign_key_constraint(:parent_id)
         |> then(&shard(&1, Changeset.get_field(&1, :parent_id)))
       end
-
     end
   end
 end

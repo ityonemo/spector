@@ -1,12 +1,13 @@
 defmodule SpectorTest.ShardedTest do
   use ExUnit.Case
 
+  alias Ecto.Adapters.SQL.Sandbox
+  alias SpectorTest.Repo
   alias SpectorTest.Sharded
   alias SpectorTest.ShardedEvent
-  alias SpectorTest.Repo
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "sharded events" do

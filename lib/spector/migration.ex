@@ -261,7 +261,7 @@ defmodule Spector.Migration do
 
     if constrained do
       # Create trigger to enforce same parent_id constraint
-      execute """
+      execute("""
       CREATE OR REPLACE FUNCTION check_link_same_parent_#{link_table}()
       RETURNS TRIGGER AS $$
       DECLARE
@@ -279,14 +279,14 @@ defmodule Spector.Migration do
         RETURN NEW;
       END;
       $$ LANGUAGE plpgsql;
-      """
+      """)
 
-      execute """
+      execute("""
       CREATE TRIGGER enforce_same_parent_#{link_table}
         BEFORE INSERT ON #{link_table}
         FOR EACH ROW
         EXECUTE FUNCTION check_link_same_parent_#{link_table}();
-      """
+      """)
     end
   end
 
@@ -305,8 +305,8 @@ defmodule Spector.Migration do
     constrained = Keyword.get(opts, :constrained, true)
 
     if constrained do
-      execute "DROP TRIGGER IF EXISTS enforce_same_parent_#{link_table} ON #{link_table}"
-      execute "DROP FUNCTION IF EXISTS check_link_same_parent_#{link_table}()"
+      execute("DROP TRIGGER IF EXISTS enforce_same_parent_#{link_table} ON #{link_table}")
+      execute("DROP FUNCTION IF EXISTS check_link_same_parent_#{link_table}()")
     end
 
     drop(table(link_table))
