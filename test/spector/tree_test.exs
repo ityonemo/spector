@@ -14,8 +14,8 @@ defmodule SpectorTest.TreeTest do
       {:ok, %TreeChat{id: id, messages: [%{content: "Hello"}]}} =
         Spector.insert(TreeChat, %{content: "Hello", role: :user})
 
-      assert [%{action: :insert, id: event_id} = event] =
-               TreeEvent.list_by_parent_id(id, TreeChat)
+      assert [%{action: :insert} = event] =
+               Spector.all_events(TreeChat, id)
 
       assert %{ancestors: []} = Repo.preload(event, :ancestors)
     end
@@ -24,12 +24,12 @@ defmodule SpectorTest.TreeTest do
       {:ok, %TreeChat{id: id} = chat} =
         Spector.insert(TreeChat, %{content: "Hello", role: :user})
 
-      [insert_event] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [insert_event] = Spector.all_events(TreeChat, id)
 
       {:ok, %TreeChat{messages: [_, %{content: "Hi!"}]}} =
         Spector.execute(chat, :append, %{content: "Hi!", role: :assistant, to: insert_event.id})
 
-      [_, appended] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [_, appended] = Spector.all_events(TreeChat, id)
       assert %{ancestors: [^insert_event]} = Repo.preload(appended, :ancestors)
     end
 
@@ -38,23 +38,23 @@ defmodule SpectorTest.TreeTest do
       {:ok, %TreeChat{id: id} = chat} =
         Spector.insert(TreeChat, %{content: "A", role: :user})
 
-      [event_a] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [event_a] = Spector.all_events(TreeChat, id)
 
       {:ok, chat} =
         Spector.execute(chat, :append, %{content: "B", role: :assistant, to: event_a.id})
 
-      [_, event_b] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [_, event_b] = Spector.all_events(TreeChat, id)
 
       {:ok, chat} =
         Spector.execute(chat, :append, %{content: "C", role: :user, to: event_b.id})
 
-      [_, _, event_c] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [_, _, event_c] = Spector.all_events(TreeChat, id)
 
       # Now branch from B (not C) to create D
       {:ok, _chat} =
         Spector.execute(chat, :append, %{content: "D (branch)", role: :user, to: event_b.id})
 
-      [_, _, _, event_d] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [_, _, _, event_d] = Spector.all_events(TreeChat, id)
 
       # D's ancestors should be [A, B], not [A, B, C]
       %{ancestors: d_ancestors} = Repo.preload(event_d, :ancestors)
@@ -69,12 +69,12 @@ defmodule SpectorTest.TreeTest do
       {:ok, %TreeChat{id: id} = chat} =
         Spector.insert(TreeChat, %{content: "A", role: :user})
 
-      [event_a] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [event_a] = Spector.all_events(TreeChat, id)
 
       {:ok, chat} =
         Spector.execute(chat, :append, %{content: "B", role: :assistant, to: event_a.id})
 
-      [_, event_b] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [_, event_b] = Spector.all_events(TreeChat, id)
 
       # First branch from B
       {:ok, chat} =
@@ -84,7 +84,7 @@ defmodule SpectorTest.TreeTest do
       {:ok, _chat} =
         Spector.execute(chat, :append, %{content: "D (branch 2)", role: :user, to: event_b.id})
 
-      [_, _, event_c, event_d] = TreeEvent.list_by_parent_id(id, TreeChat)
+      [_, _, event_c, event_d] = Spector.all_events(TreeChat, id)
 
       # Both C and D should have the same ancestors: [A, B]
       %{ancestors: c_ancestors} = Repo.preload(event_c, :ancestors)

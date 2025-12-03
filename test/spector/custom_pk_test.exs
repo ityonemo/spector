@@ -15,7 +15,7 @@ defmodule SpectorTest.CustomPKTest do
         Spector.insert(CustomPK, %{name: "Bob", value: 42})
 
       assert uuid != nil
-      assert [%{action: :insert}] = Event.list_by_parent_id(uuid, CustomPK)
+      assert [%{action: :insert}] = Spector.all_events(CustomPK, uuid)
     end
 
     test "get reconstructs the struct from events" do
@@ -52,7 +52,7 @@ defmodule SpectorTest.CustomPKTest do
       refute new_record.uuid == old_uuid
 
       # Event was created
-      assert [%{action: :insert}] = Event.list_by_parent_id(new_record.uuid, CustomPK)
+      assert [%{action: :insert}] = Spector.all_events(CustomPK, new_record.uuid)
     end
   end
 end

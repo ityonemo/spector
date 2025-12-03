@@ -157,15 +157,19 @@ defmodule Spector.Evented do
   @doc """
   Convert the current record state into an attrs map for a savepoint event.
 
-  Called by `Spector.savepoint/1` to capture the full state of a record.
+  Called by `Spector.savepoint/2` to capture the full state of a record.
   When replaying events, savepoints allow starting from an intermediate state
   instead of replaying from the beginning.
+
+  The `version` parameter is the schema version at the time the savepoint was
+  registered (from the savepoint event's `__version__` field). This allows
+  handling schema migrations when replaying from older savepoints.
 
   ```elixir
   @behaviour Spector.Evented
 
   @impl true
-  def savepoint(record) do
+  def savepoint(record, _version) do
     %{
       name: record.name,
       email: record.email,
@@ -176,10 +180,13 @@ defmodule Spector.Evented do
 
   The returned attrs map should contain all fields needed to reconstruct
   the record's state at this point.
-  """
-  @callback savepoint(record :: struct()) :: map()
 
-  @optional_callbacks [prepare_event: 3, savepoint: 1]
+  **Testing savepoints is highly encouraged.** Use `Spector.Integrity.verify_savepoints/2`
+  to ensure savepoints correctly capture the replayed state from all possible replay paths.
+  """
+  @callback savepoint(record :: struct(), version :: non_neg_integer()) :: map()
+
+  @optional_callbacks [prepare_event: 3, savepoint: 2]
 
   @doc """
   Creates a has_many association to the event log for this record.

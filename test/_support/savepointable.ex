@@ -7,17 +7,20 @@ defmodule SpectorTest.Savepointable do
   schema "basic" do
     field(:name, :string)
     field(:value, :integer)
+    # Field intentionally omitted from savepoint/1 for testing integrity verification
+    field(:bugged, :string)
     timestamps()
   end
 
   def changeset(changeset, attrs) do
     changeset
-    |> Changeset.cast(attrs, [:name, :value])
+    |> Changeset.cast(attrs, [:name, :value, :bugged])
     |> Changeset.validate_required([:name])
   end
 
   @impl true
-  def savepoint(record) do
+  def savepoint(record, _version) do
+    # BUG: intentionally omits :bugged field to test integrity verification
     %{
       name: record.name,
       value: record.value

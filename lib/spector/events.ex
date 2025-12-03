@@ -170,8 +170,6 @@ defmodule Spector.Events do
   Using this module generates the following functions:
 
   * `changeset/1`, `changeset/2` - Build an event changeset
-  * `list_by_parent_id/2` - List all events for a given record ID and schema
-  * `backtrace/1` - List all events up to and including a given event
   * `table_for/1` - Get the table name for a given parent_id
   * `shard/2` - Apply sharding to a changeset
   * `__spector__/1` - Internal metadata accessor
@@ -186,18 +184,6 @@ defmodule Spector.Events do
   Build an event changeset from an existing struct and attributes.
   """
   @callback changeset(struct :: struct(), attrs :: map()) :: Ecto.Changeset.t()
-
-  @doc """
-  List all events for a given parent_id and schema, ordered by id.
-  """
-  @callback list_by_parent_id(parent_id :: binary(), schema :: module()) :: [struct()]
-
-  @doc """
-  List all events up to and including a given event, ordered by id.
-
-  Useful for reconstructing state at a specific point in time.
-  """
-  @callback backtrace(entry :: struct()) :: [struct()]
 
   @doc """
   Get the table name for a given parent_id.
@@ -388,29 +374,6 @@ defmodule Spector.Events do
         |> then(&shard(&1, Changeset.get_field(&1, :parent_id)))
       end
 
-      def list_by_parent_id(parent_id, schema) do
-        import Ecto.Query
-        table = table_for(parent_id)
-
-        unquote(repo).all(
-          from(e in {table, __MODULE__},
-            where: e.parent_id == ^parent_id and e.schema == ^schema,
-            order_by: [asc: e.inserted_at]
-          )
-        )
-      end
-
-      def backtrace(entry) do
-        import Ecto.Query
-        table = table_for(entry.parent_id)
-
-        unquote(repo).all(
-          from(e in {table, __MODULE__},
-            where: e.parent_id == ^entry.parent_id and e.id <= ^entry.id,
-            order_by: e.id
-          )
-        )
-      end
     end
   end
 end

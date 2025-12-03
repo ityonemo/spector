@@ -23,7 +23,7 @@ defmodule SpectorTest.ShardedTest do
       assert [] = query_shard(other_table)
     end
 
-    test "list_by_parent_id queries the correct shard" do
+    test "all_events queries the correct shard" do
       {:ok, %{id: id}} = Spector.insert(Sharded, %{name: "Alice", value: 1})
 
       shard_table = ShardedEvent.shard_for(id)
@@ -31,8 +31,8 @@ defmodule SpectorTest.ShardedTest do
       other_table =
         if shard_table == "sharded_events_0", do: "sharded_events_1", else: "sharded_events_0"
 
-      # list_by_parent_id should find the event in the correct shard
-      assert [%{parent_id: ^id}] = ShardedEvent.list_by_parent_id(id, Sharded)
+      # all_events should find the event in the correct shard
+      assert [%{parent_id: ^id}] = Spector.all_events(Sharded, id)
       assert [%{parent_id: ^id}] = query_shard(shard_table)
       assert [] = query_shard(other_table)
     end
@@ -53,7 +53,7 @@ defmodule SpectorTest.ShardedTest do
       assert [] = query_shard(other_table)
     end
 
-    test "backtrace works with sharding" do
+    test "previous_events works with sharding" do
       {:ok, %{id: id}} = Spector.insert(Sharded, %{name: "Alice", value: 1})
       object = Repo.get!(Sharded, id)
 
@@ -68,10 +68,10 @@ defmodule SpectorTest.ShardedTest do
       [insert_event, update1, update2] = query_shard(shard_table)
       assert [] = query_shard(other_table)
 
-      # Backtrace should work within the shard
-      assert [^insert_event] = ShardedEvent.backtrace(insert_event)
-      assert [^insert_event, ^update1] = ShardedEvent.backtrace(update1)
-      assert [^insert_event, ^update1, ^update2] = ShardedEvent.backtrace(update2)
+      # previous_events should work within the shard
+      assert [^insert_event] = Spector.previous_events(insert_event)
+      assert [^insert_event, ^update1] = Spector.previous_events(update1)
+      assert [^insert_event, ^update1, ^update2] = Spector.previous_events(update2)
     end
 
     test "delete inserts to the correct shard" do

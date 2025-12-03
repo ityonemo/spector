@@ -102,7 +102,7 @@ defmodule MyApp.AIChat do
     MyApp.Repo.all(
       from(e in MyApp.AIChatEvents,
         where: e.id == ^tail_id or e.id in subquery(ancestor_ids),
-        order_by: [desc: e.id]
+        order_by: [desc: e.inserted_at]
       )
     )
   end

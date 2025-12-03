@@ -1,5 +1,7 @@
 ExUnit.start()
 
+Logger.configure(level: :error)
+
 # Configure the test repo
 Application.put_env(:spector, SpectorTest.Repo,
   database: "spector_test",

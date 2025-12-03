@@ -136,13 +136,13 @@ defmodule MyApp.User do
   use Spector.Evented, events: MyApp.Events
 
   @impl true
-  def savepoint(record) do
+  def savepoint(record, _version) do
     %{name: record.name, email: record.email}
   end
 end
 
 # Create a savepoint
-{:ok, user} = Spector.savepoint(user)
+{:ok, user} = Spector.savepoint(MyApp.User, user_id)
 ```
 
 When replaying events, Spector starts from the most recent savepoint instead of the beginning, improving performance for records with long histories.

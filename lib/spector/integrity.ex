@@ -12,14 +12,15 @@ defmodule Spector.Integrity do
   @doc """
   Verify all savepoints for a record match the expected state at that point.
 
-  Replays events from the beginning up to each savepoint and compares
-  the computed state against the savepoint's stored payload.
+  Replays events from the beginning up to each savepoint and verifies that
+  all replay paths (skipping different combinations of savepoints) converge
+  to the same state. This catches bugs in `savepoint/2` implementations that
+  omit fields.
 
-  Returns `:ok` if all savepoints are valid, or `{:error, failures}` where
-  failures is a list of `{event_id, {:savepoint_mismatch, mismatches}}` tuples.
+  Returns `:ok` if all savepoints are valid, or `{:error, exception}` where
+  exception is a `Spector.Integrity.SavepointFailure`.
 
-  Returns `{:error, :savepoint_not_implemented}` if the schema doesn't
-  implement the `savepoint/1` callback.
+  Raises if the schema doesn't implement the `savepoint/2` callback.
 
   ## Examples
 
@@ -29,98 +30,68 @@ defmodule Spector.Integrity do
       # Handle verification failures
       case Spector.Integrity.verify_savepoints(MyApp.User, user_id) do
         :ok -> :verified
-        {:error, :savepoint_not_implemented} -> :no_savepoint_support
-        {:error, failures} -> handle_failures(failures)
+        {:error, %Spector.Integrity.SavepointFailure{} = failure} ->
+          Logger.error(Exception.message(failure))
       end
   """
   @spec verify_savepoints(module(), String.t()) ::
-          :ok | {:error, :savepoint_not_implemented} | {:error, [{String.t(), term()}]}
+          :ok | {:error, Spector.Integrity.SavepointFailure.t()}
   def verify_savepoints(schema, parent_id) do
-    unless function_exported?(schema, :savepoint, 1) do
-      {:error, :savepoint_not_implemented}
-    else
-      events_module = schema.__spector__(:events)
-      events = events_module.list_by_parent_id(parent_id, schema)
+    if !function_exported?(schema, :savepoint, 2), do: raise "Schema #{inspect(schema)} must implement savepoint/2 callback"
 
-      failures =
-        events
-        |> Enum.with_index()
-        |> Enum.filter(fn {event, _idx} -> event.action == :savepoint end)
-        |> Enum.map(fn {savepoint_event, idx} ->
-          # Replay events up to (but not including) this savepoint
-          events_before = Enum.take(events, idx)
-          replayed_state = replay_events(schema, parent_id, events_before)
+    events = Spector.all_events(schema, parent_id)
 
-          # Get expected state from savepoint callback
-          expected_attrs = schema.savepoint(replayed_state)
-
-          # Compare with stored savepoint payload
-          case compare_savepoint(savepoint_event.payload, expected_attrs) do
-            :ok -> nil
-            {:error, mismatches} -> {savepoint_event.id, {:savepoint_mismatch, mismatches}}
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
-
-      case failures do
-        [] -> :ok
-        _ -> {:error, failures}
-      end
-    end
-  end
-
-  # Replay events to get the state at a specific point
-  defp replay_events(schema, parent_id, events) do
     [pk_field] = schema.__schema__(:primary_key)
-
     initial_changeset =
       schema
       |> struct!([{pk_field, parent_id}])
       |> Changeset.change()
 
-    changeset =
-      Enum.reduce(events, initial_changeset, fn event, changeset ->
-        changeset
-        |> Map.replace!(:action, event.action)
-        |> schema.changeset(Map.put(event.payload, "__event_id__", event.id))
-      end)
-
-    Changeset.apply_changes(changeset)
+    # Start with one universe containing just the initial state.  If it makes it through the
+    # whole thing, we are ok.
+    Enum.reduce(events, [initial_changeset], &apply_to_universes(&2, &1, schema, []))
+    :ok
+  catch
+    {:error, failure} -> {:error, failure}
   end
 
-  # Compare savepoint payload with expected attrs from savepoint callback
-  defp compare_savepoint(payload, expected_attrs) do
-    # Filter out metadata fields from payload
-    payload_data =
-      payload
-      |> Map.drop(["__version__", "__event_id__"])
-      |> normalize_keys()
+  # savepoint case:  We're going to accumulate {changeset, applied state} tuples
+  # and verify convergence while reversing the list.
+  defp apply_to_universes([last], %{action: :savepoint} = event, schema, so_far) do
+    # if we're at a savepoint, we should preserve the last universe (this is the one that has skipped no savepoints)
+    # and seed the new universes list, after verifying all universes have converged.
+    last_changeset = Spector._roll_one(event, last, schema)
+    all_applied_to_check = Changeset.apply_action!(last_changeset, :savepoint)
+    skipped_to_check = Changeset.apply_action!(last, :savepoint)
 
-    expected_data = normalize_keys(expected_attrs)
+    verify_integrity([{last, skipped_to_check} | so_far], all_applied_to_check, [last_changeset])
+  end
 
-    mismatches =
-      expected_data
-      |> Enum.filter(fn {key, expected_value} ->
-        actual_value = Map.get(payload_data, key)
-        actual_value != expected_value
-      end)
-      |> Enum.map(fn {key, expected_value} ->
-        actual_value = Map.get(payload_data, key)
-        {key, {expected_value, actual_value}}
-      end)
+  defp apply_to_universes([head | rest], %{action: :savepoint} = event, schema, so_far) do
+    head_changeset = Spector._roll_one(event, head, schema)
+    head_to_check = Changeset.apply_action!(head_changeset, :savepoint)
+    apply_to_universes(rest, event, schema, [{head_changeset, head_to_check} | so_far])
+  end
 
-    case mismatches do
-      [] -> :ok
-      _ -> {:error, mismatches}
+  # non savepoint case: just roll forward all universes and reverse when done.
+
+  defp apply_to_universes([head | rest], event, schema, so_far) do
+    apply_to_universes(rest, event, schema, [Spector._roll_one(event, head, schema) | so_far])
+  end
+
+  defp apply_to_universes([], _event, _, so_far), do: Enum.reverse(so_far)
+
+  defp verify_integrity([], _expected, so_far), do: so_far
+
+  defp verify_integrity([{head_changeset, head_check} | rest], expected, so_far) do
+    if expected == head_check do
+      verify_integrity(rest, expected, [head_changeset | so_far])
+    else
+      throw({:error, Spector.Integrity.SavepointFailure.exception(
+        expected: expected,
+        actual: head_check
+      )})
     end
-  end
-
-  # Normalize map keys to atoms for comparison
-  defp normalize_keys(map) do
-    Map.new(map, fn {k, v} ->
-      key = if is_binary(k), do: String.to_existing_atom(k), else: k
-      {key, v}
-    end)
   end
 
   @doc """
@@ -129,11 +100,10 @@ defmodule Spector.Integrity do
   Iterates through all events in the table ordered by id and verifies
   that each event's hash correctly chains from the previous event.
 
-  Returns `:ok` if the hash chain is valid, or an error tuple describing
-  the first broken link in the chain.
+  Returns `:ok` if the hash chain is valid, or `{:error, exception}` where
+  exception is a `Spector.Integrity.HashMismatch`.
 
-  Returns `{:error, :not_hashed}` if the events module doesn't have
-  hash chain integrity enabled.
+  Raises if the events module doesn't have hash chain integrity enabled.
 
   ## Examples
 
@@ -143,31 +113,28 @@ defmodule Spector.Integrity do
       # Handle verification failures
       case Spector.Integrity.verify_hash_chain(MyApp.Events) do
         :ok -> :verified
-        {:error, :not_hashed} -> :hashing_not_enabled
-        {:error, {:hash_mismatch, event_id, expected, actual}} ->
-          Logger.error("Hash mismatch at event \#{event_id}")
+        {:error, %Spector.Integrity.HashMismatch{} = failure} ->
+          Logger.error(Exception.message(failure))
       end
   """
   @spec verify_hash_chain(module()) ::
-          :ok | {:error, :not_hashed} | {:error, {:hash_mismatch, binary(), binary(), binary()}}
+          :ok | {:error, Spector.Integrity.HashMismatch.t()}
   def verify_hash_chain(events_module) do
-    unless events_module.__spector__(:hashed) do
-      {:error, :not_hashed}
-    else
-      repo = events_module.__spector__(:repo)
-      table = events_module.__schema__(:source)
+    if !events_module.__spector__(:hashed), do: raise "Events module #{inspect(events_module)} is not hashed"
 
-      # Stream all events ordered by id
-      events =
-        repo.all(
-          from(e in {table, events_module},
-            order_by: [asc: e.id],
-            select: %{id: e.id, schema: e.schema, action: e.action, payload: e.payload, hash: e.hash}
-          )
+    repo = events_module.__spector__(:repo)
+    table = events_module.__schema__(:source)
+
+    # Stream all events ordered by insertion time
+    events =
+      repo.all(
+        from(e in {table, events_module},
+          order_by: [asc: e.inserted_at],
+          select: %{id: e.id, schema: e.schema, action: e.action, payload: e.payload, hash: e.hash}
         )
+      )
 
-      verify_chain(events, nil)
-    end
+    verify_chain(events, nil)
   end
 
   defp verify_chain([], _prev_hash), do: :ok
@@ -178,7 +145,11 @@ defmodule Spector.Integrity do
     if expected_hash == event.hash do
       verify_chain(rest, event.hash)
     else
-      {:error, {:hash_mismatch, event.id, expected_hash, event.hash}}
+      {:error, Spector.Integrity.HashMismatch.exception(
+        event_id: event.id,
+        expected_hash: expected_hash,
+        actual_hash: event.hash
+      )}
     end
   end
 

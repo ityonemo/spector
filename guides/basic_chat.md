@@ -89,7 +89,7 @@ defmodule MyApp.BasicChat do
       from(link in "basic_chat_edits", select: link.previous_id)
       |> MyApp.Repo.all()
 
-    MyApp.BasicChatEvents.list_by_parent_id(chat_id, __MODULE__)
+    Spector.all_events(__MODULE__, chat_id)
     |> Enum.reject(&(&1.id in edited_ids))
   end
 
@@ -103,7 +103,7 @@ defmodule MyApp.BasicChat do
     MyApp.Repo.all(
       from(e in MyApp.BasicChatEvents,
         where: e.id == ^message_id or e.id in subquery(previous_ids),
-        order_by: [asc: e.id]
+        order_by: [asc: e.inserted_at]
       )
     )
   end

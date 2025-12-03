@@ -180,16 +180,16 @@ defmodule SpectorTest.BasicTest do
       events = Repo.all(Event)
       assert length(events) == 3
 
-      [insert_event, update1, update2] = Enum.sort_by(events, & &1.id)
+      [insert_event, update1, update2] = Enum.sort_by(events, & &1.inserted_at)
 
-      # Backtrace from first event returns only itself
-      assert [^insert_event] = Event.backtrace(insert_event)
+      # previous_events from first event returns only itself
+      assert [^insert_event] = Spector.previous_events(insert_event)
 
-      # Backtrace from second event returns first two
-      assert [^insert_event, ^update1] = Event.backtrace(update1)
+      # previous_events from second event returns first two
+      assert [^insert_event, ^update1] = Spector.previous_events(update1)
 
-      # Backtrace from third event returns all three
-      assert [^insert_event, ^update1, ^update2] = Event.backtrace(update2)
+      # previous_events from third event returns all three
+      assert [^insert_event, ^update1, ^update2] = Spector.previous_events(update2)
     end
   end
 

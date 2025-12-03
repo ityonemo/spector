@@ -28,7 +28,7 @@ defmodule SpectorTest.HashedTest do
       events = Repo.all(HashedEvent)
       assert length(events) == 2
 
-      [first, second] = Enum.sort_by(events, & &1.id)
+      [first, second] = Enum.sort_by(events, & &1.inserted_at)
 
       # Both have hashes
       assert first.hash != nil

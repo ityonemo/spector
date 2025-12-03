@@ -15,7 +15,7 @@ defmodule SpectorTest.EmbeddedTest do
         Spector.insert(Chat, %{content: "Hello", role: :user})
 
       # Event should be stored
-      assert [%{action: :insert}] = Event.list_by_parent_id(id, Chat)
+      assert [%{action: :insert}] = Spector.all_events(Chat, id)
     end
 
     test "update appends a message to the list" do

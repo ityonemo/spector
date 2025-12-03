@@ -6,19 +6,59 @@ defmodule SpectorTest.SavepointTest do
   end
 
   describe "savepoint/1" do
-    test "returns error when schema doesn't implement savepoint callback" do
+    test "creates savepoint from record" do
+      {:ok, record} = Spector.insert(SpectorTest.Savepointable, %{name: "Test", value: 1})
+
+      assert {:ok, returned} = Spector.savepoint(record)
+      assert returned.id == record.id
+      assert returned.name == record.name
+      assert returned.value == record.value
+
+      events = Spector.all_events(SpectorTest.Savepointable, record.id)
+      assert length(events) == 2
+      assert List.last(events).action == :savepoint
+    end
+
+    test "raises when record state doesn't match replayed state" do
+      {:ok, record} = Spector.insert(SpectorTest.Savepointable, %{name: "Test", value: 1})
+
+      # Create a stale record by updating but using old reference
+      stale_record = record
+      {:ok, _updated} = Spector.update(record, %{value: 100})
+
+      assert_raise RuntimeError, ~r/does not match reference record/, fn ->
+        Spector.savepoint(stale_record)
+      end
+    end
+
+    test "raises when schema doesn't implement savepoint callback" do
       {:ok, basic} = Spector.insert(SpectorTest.Basic, %{name: "Test", value: 1})
 
-      assert {:error, :savepoint_not_implemented} = Spector.savepoint(basic)
+      assert_raise RuntimeError, ~r/must implement savepoint\/2 callback/, fn ->
+        Spector.savepoint(basic)
+      end
+    end
+  end
+
+  describe "savepoint/2" do
+    test "raises when schema doesn't implement savepoint callback" do
+      {:ok, basic} = Spector.insert(SpectorTest.Basic, %{name: "Test", value: 1})
+
+      assert_raise RuntimeError, ~r/must implement savepoint\/2 callback/, fn ->
+        Spector.savepoint(SpectorTest.Basic, basic.id)
+      end
     end
 
     test "creates a savepoint event when schema implements savepoint callback" do
       {:ok, record} = Spector.insert(SpectorTest.Savepointable, %{name: "Test", value: 1})
 
-      assert {:ok, ^record} = Spector.savepoint(record)
+      assert {:ok, returned} = Spector.savepoint(SpectorTest.Savepointable, record.id)
+      assert returned.id == record.id
+      assert returned.name == record.name
+      assert returned.value == record.value
 
       # Verify the savepoint event was created
-      events = SpectorTest.Event.list_by_parent_id(record.id, SpectorTest.Savepointable)
+      events = Spector.all_events(SpectorTest.Savepointable, record.id)
       assert length(events) == 2
       assert Enum.at(events, 0).action == :insert
       assert Enum.at(events, 1).action == :savepoint
@@ -33,9 +73,10 @@ defmodule SpectorTest.SavepointTest do
       {:ok, record} = Spector.insert(SpectorTest.Savepointable, %{name: "Test", value: 1})
       {:ok, record} = Spector.update(record, %{value: 100})
 
-      assert {:ok, ^record} = Spector.savepoint(record)
+      assert {:ok, returned} = Spector.savepoint(SpectorTest.Savepointable, record.id)
+      assert returned.id == record.id
 
-      events = SpectorTest.Event.list_by_parent_id(record.id, SpectorTest.Savepointable)
+      events = Spector.all_events(SpectorTest.Savepointable, record.id)
       savepoint_event = List.last(events)
 
       assert savepoint_event.action == :savepoint
@@ -50,7 +91,7 @@ defmodule SpectorTest.SavepointTest do
       {:ok, record} = Spector.update(record, %{name: "Changed"})
 
       # Create savepoint at current state (name: "Changed", value: 10)
-      {:ok, _record} = Spector.savepoint(record)
+      {:ok, _record} = Spector.savepoint(SpectorTest.Savepointable, record.id)
 
       # Make more updates after savepoint
       {:ok, record} = Spector.update(record, %{value: 100})
@@ -78,7 +119,7 @@ defmodule SpectorTest.SavepointTest do
       {:ok, record} = Spector.update(record, %{value: 5})
 
       # Savepoint at value: 5
-      {:ok, _record} = Spector.savepoint(record)
+      {:ok, _record} = Spector.savepoint(SpectorTest.Savepointable, record.id)
 
       # Make more updates after savepoint
       {:ok, record} = Spector.update(record, %{value: 50})
@@ -90,7 +131,7 @@ defmodule SpectorTest.SavepointTest do
       assert brought_up.value == 50
 
       # Verify events count - should have insert + 5 updates + savepoint + 2 updates = 9
-      events = SpectorTest.Event.list_by_parent_id(record.id, SpectorTest.Savepointable)
+      events = Spector.all_events(SpectorTest.Savepointable, record.id)
       assert length(events) == 9
     end
   end

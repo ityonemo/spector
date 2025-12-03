@@ -205,6 +205,7 @@ defmodule Spector do
   """
 
   alias Ecto.Changeset
+  alias Spector.Queries
 
   defp get_repo(schema, events) do
     schema.__spector__(:repo) || events.__spector__(:repo)
@@ -240,7 +241,7 @@ defmodule Spector do
       schema
       |> struct!()
       |> Changeset.change()
-      |> Map.replace!(:action, action)
+      |> _set_changeset_action(action)
       |> schema.changeset(attrs)
 
     if changeset.valid? do
@@ -269,8 +270,9 @@ defmodule Spector do
 
   defp do_insert(changeset, repo, schema) do
     if schema.__schema__(:source) do
-      insert_changeset = Map.replace!(changeset, :action, :insert)
-      repo.insert(insert_changeset)
+      changeset
+      |> _set_changeset_action(:insert)
+      |> repo.insert()
     else
       Changeset.apply_action(changeset, :insert)
     end
@@ -278,8 +280,9 @@ defmodule Spector do
 
   defp do_update(changeset, repo, schema) do
     if schema.__schema__(:source) do
-      update_changeset = Map.replace!(changeset, :action, :update)
-      repo.update(update_changeset)
+      changeset
+      |> _set_changeset_action(:update)
+      |> repo.update()
     else
       Changeset.apply_action(changeset, :update)
     end
@@ -316,12 +319,81 @@ defmodule Spector do
   """
   @spec get(evented_schema(), String.t()) :: evented_struct() | nil
   def get(schema, parent_id) do
-    events_module = schema.__spector__(:events)
-
-    parent_id
-    |> events_module.list_by_parent_id(schema)
+    schema
+    |> recent_events(parent_id)
     |> roll_forward()
     |> and_apply(:get)
+  end
+
+
+  @doc """
+  Returns all events for a record from the beginning.
+
+  Events are returned in insertion order.
+
+  ## Example
+
+      events = Spector.all_events(MyApp.User, user_id)
+  """
+  @spec all_events(evented_schema(), Ecto.UUID.t()) :: [struct()]
+  def all_events(schema, parent_id) do
+    events_module = schema.__spector__(:events)
+    repo = get_repo(schema, events_module)
+
+    schema
+    |> Queries.all_events(parent_id)
+    |> repo.all()
+  end
+
+  @doc """
+  Returns events starting from the most recent savepoint.
+
+  If no savepoint exists, returns all events from the beginning.
+  The savepoint event itself is included as the first element.
+
+  Events are returned in insertion order.
+
+  Use of this function over `all_events/2` is preferable; if the
+  schema does not support savepoints, the two functions behave
+  identically.
+
+  ## Example
+
+      events = Spector.recent_events(MyApp.User, user_id)
+  """
+  @spec recent_events(evented_schema(), Ecto.UUID.t()) :: [struct()]
+  def recent_events(schema, parent_id) do
+    events_module = schema.__spector__(:events)
+    repo = get_repo(schema, events_module)
+
+    schema
+    |> Queries.recent_events(parent_id)
+    |> repo.all()
+  end
+
+  @doc """
+  Returns all events up to and including the given event.
+
+  Events are returned in insertion order. The specified event is included
+  as the last element in the result.
+
+  > ### Note {: .warning }
+  >
+  > This function does not take into account savepoints.
+
+  ## Example
+
+      events = Spector.previous_events(event)
+  """
+  def previous_events(event) do
+    events_module = event.__struct__
+    [pk_field] = events_module.__schema__(:primary_key)
+    event_id = Map.fetch!(event, pk_field)
+    repo = events_module.__spector__(:repo)
+
+    events_module
+    |> Queries.previous_events(event.parent_id, event_id)
+    |> repo.all()
   end
 
   @doc """
@@ -501,66 +573,103 @@ defmodule Spector do
   @doc """
   Create a savepoint event capturing the current state of a record.
 
-  Returns `{:ok, struct}` on success or `{:error, reason}` on failure.
+  Returns `{:ok, struct}` on success or raises on failure.
 
   Savepoints store the complete state of a record at a point in time, allowing
   event replay to start from the savepoint instead of replaying all events
   from the beginning. This is useful for records with long event histories.
 
-  The schema must implement the `savepoint/1` callback to define how the
-  current state is converted to an attrs map.
+  The schema must implement the `savepoint/2` callback to define how the
+  current state is converted to an attrs map:
 
-  ## Example
-
-      # In your schema:
       @behaviour Spector.Evented
 
       @impl true
-      def savepoint(record) do
+      def savepoint(record, _version) do
         %{name: record.name, email: record.email}
       end
 
-      # Then create savepoints:
+  ## Forms
+
+  There are two ways to create a savepoint:
+
+  ### From a record (`savepoint/1`)
+
+  Pass the record directly. This verifies that the record matches the current
+  state in the event log (replayed events must produce the same field values).
+  This guards against creating savepoints from stale records:
+
       {:ok, user} = Spector.savepoint(user)
+
+  If the record is stale (e.g., another process updated it), this raises an error.
+
+  ### From schema and ID (`savepoint/2`)
+
+  Pass the schema module and record ID. This replays events to determine
+  current state without verification:
+
+      {:ok, user} = Spector.savepoint(MyApp.User, user_id)
+
+  Use this form when you don't have the record in memory or don't need
+  stale record detection.
   """
-  @spec savepoint(evented_struct()) :: {:ok, evented_struct()} | {:error, term()}
-  def savepoint(object) do
-    schema = object.__struct__
+  def savepoint(record) when is_struct(record), do: do_savepoint(record.__struct__, nil, record, [])
+  def savepoint(record, opts) when is_struct(record) and is_list(opts), do: do_savepoint(record.__struct__, nil, record, opts)
+  def savepoint(schema, id) when is_atom(schema), do: do_savepoint(schema, id, nil, [])
 
-    if function_exported?(schema, :savepoint, 1) do
-      events = schema.__spector__(:events)
-      repo = get_repo(schema, events)
-      [pk_field] = schema.__schema__(:primary_key)
-      parent_id = Map.fetch!(object, pk_field)
+  @spec do_savepoint(module(), Ecto.UUID.t() | nil, evented_struct() | nil, keyword()) :: {:ok, evented_struct()} | {:error, term()}
+  defp do_savepoint(schema, id, reference_record, opts) do
+    if not function_exported?(schema, :savepoint, 2), do: raise "Schema #{inspect(schema)} must implement savepoint/2 callback"
+    events_module = schema.__spector__(:events)
+    version = schema.__spector__(:version)
+    [id_field] = schema.__schema__(:primary_key)
 
-      attrs = schema.savepoint(object)
-      version = schema.__spector__(:version)
+    id = if reference_record, do: Map.fetch!(reference_record, id_field), else: id
 
-      repo.transact(fn ->
-        id = UUIDv7.generate()
+    repo = get_repo(schema, events_module)
 
-        payload =
-          attrs
-          |> Map.put(:__version__, version)
-          |> Map.put(:__event_id__, id)
+    repo.transact(fn ->
+      # Replay to get current state
+      record =
+        schema
+        |> Queries.recent_events(id)
+        |> repo.all()
+        |> roll_forward()
+        |> Changeset.apply_changes()
+        |> verify_record!(reference_record, opts)
 
-        event_attrs = %{
-          id: id,
-          parent_id: parent_id,
-          schema: schema,
-          action: :savepoint,
-          payload: payload
-        }
+      event_id = UUIDv7.generate()
 
-        event_attrs = maybe_add_hash(events, event_attrs, parent_id)
+      payload =
+        record
+        |> schema.savepoint(version)
+        |> Map.put(:__version__, version)
+        |> Map.put(:__event_id__, event_id)
 
-        with {:ok, _event} <- repo.insert(events.changeset(event_attrs)) do
-          {:ok, object}
-        end
-      end)
-    else
-      {:error, :savepoint_not_implemented}
+      event_attrs = %{
+        id: event_id,
+        parent_id: id,
+        schema: schema,
+        action: :savepoint,
+        payload: payload
+      }
+
+      events_module.changeset(event_attrs)
+      |> repo.insert!()
+
+      {:ok, record}
+    end)
+  end
+
+  defp verify_record!(record, nil, _), do: record
+  defp verify_record!(record, reference_record, opts) do
+    fields = Keyword.get_lazy(opts, :fields, fn ->
+      record.__struct__.__schema__(:fields) -- ~w[inserted_at updated_at]a
+    end)
+    if Map.take(record, fields) != Map.take(reference_record, fields) do
+      raise "Savepoint record does not match reference record"
     end
+    record
   end
 
   @doc """
@@ -600,13 +709,13 @@ defmodule Spector do
       |> Map.put(:__event_id__, id)
 
     # Roll forward from events to get current state
-    previous_events = events_module.list_by_parent_id(parent_id, schema)
+    previous_events = recent_events(schema, parent_id)
 
     changeset =
       previous_events
       |> roll_forward()
       |> or_crash()
-      |> Map.replace!(:action, action)
+      |> _set_changeset_action(action)
       |> schema.changeset(attrs)
 
     if changeset.valid? do
@@ -638,26 +747,32 @@ defmodule Spector do
     end
   end
 
-  @doc false
-  # this is an internal utility function.
-  # Assigns the event ID from attrs to a field on the changeset.
-  #
-  # If no `:__event_id__` is present in attrs, the changeset is returned unchanged.
-  #
-  # ## Parameters
-  #
-  #   - `changeset` - The Ecto changeset to modify
-  #   - `attrs` - The attrs map passed to `changeset/2` (contains `:__event_id__`)
-  #   - `field` - The field to assign the event ID to (default: `:id`)
-  #
-  # ## Example
-  #
-  #     def changeset(message, attrs) do
-  #       message
-  #       |> Ecto.Changeset.cast(attrs, [:content, :role])
-  #       |> Spector.changeset_put_event_id(attrs)
-  #       |> Ecto.Changeset.validate_required([:id, :content, :role])
-  #     end
+  @doc """
+  Assigns the current event ID to a changeset field.
+
+  When Spector calls your `changeset/2` function, it includes an `:__event_id__`
+  key in the attrs map. This function extracts that ID and assigns it to
+  the specified field in your changeset.
+
+  This is useful for embedded schemas and `{:array, :map}` rollup objects
+  where you want each record to have a unique ID that matches its creation event.
+
+  ## Parameters
+
+    - `changeset` - The changeset to modify
+    - `attrs` - The attrs map passed to `changeset/2` (contains `:__event_id__`)
+    - `field` - The field to assign the event ID to (default: `:id`)
+
+  ## Example
+
+      def changeset(message, attrs) do
+        message
+        |> Ecto.Changeset.cast(attrs, [:content, :role])
+        |> Spector.changeset_put_event_id(attrs)
+        |> Ecto.Changeset.validate_required([:id, :content, :role])
+      end
+
+  """
   @spec changeset_put_event_id(Ecto.Changeset.t(), attrs()) :: Ecto.Changeset.t()
   @spec changeset_put_event_id(Ecto.Changeset.t(), attrs(), atom()) :: Ecto.Changeset.t()
   def changeset_put_event_id(changeset, attrs, field \\ :id) do
@@ -774,14 +889,10 @@ defmodule Spector do
   end
 
   defp get_last_hash(events, parent_id) do
-    import Ecto.Query
     repo = events.__spector__(:repo)
-    table = events.table_for(parent_id)
-
-    case repo.one(from(e in {table, events}, order_by: [desc: e.id], limit: 1, select: e.hash)) do
-      nil -> nil
-      hash -> hash
-    end
+    events
+    |> Queries.last_hash(parent_id)
+    |> repo.one()
   end
 
   @doc false
@@ -811,61 +922,32 @@ defmodule Spector do
     [pk_field] = schema.__schema__(:primary_key)
 
     # If schema implements savepoint/1, start from the most recent savepoint
-    {initial_changeset, events_to_replay} =
-      if function_exported?(schema, :savepoint, 1) do
-        find_savepoint_start(schema, pk_field, parent_id, events)
-      else
-        {schema |> struct!([{pk_field, parent_id}]) |> Changeset.change(), events}
-      end
+    initial = schema
+    |> struct!([{pk_field, parent_id}])
+    |> Changeset.change()
 
-    initial_changeset
-    |> then(
-      &Enum.reduce(events_to_replay, &1, fn %{parent_id: ^parent_id} = event, changeset ->
-        changeset
-        |> Map.replace!(:action, event.action)
-        |> schema.changeset(Map.put(event.payload, "__event_id__", event.id))
-      end)
-    )
+    Enum.reduce(events, initial, &_roll_one(&1, &2, schema))
   end
 
-  # Find the most recent savepoint and return {initial_changeset, events_after_savepoint}
-  defp find_savepoint_start(schema, pk_field, parent_id, events) do
-    # Find the index of the last savepoint event
-    savepoint_index =
-      events
-      |> Enum.reverse()
-      |> Enum.find_index(&(&1.action == :savepoint))
+  @doc false
+  def _set_changeset_action(changeset, action) do
+    Map.replace!(changeset, :action, action)
+  end
 
-    case savepoint_index do
-      nil ->
-        # No savepoint found, start from scratch
-        {schema |> struct!([{pk_field, parent_id}]) |> Changeset.change(), events}
+  @doc false
+  def _roll_one(%{action: :savepoint} = event, _changeset, schema) do
+    [pk_field] = schema.__schema__(:primary_key)
 
-      idx ->
-        # Convert reverse index to forward index
-        forward_index = length(events) - 1 - idx
-        savepoint_event = Enum.at(events, forward_index)
-
-        # Build initial state from savepoint payload
-        initial_struct =
-          schema
-          |> struct!([{pk_field, parent_id}])
-          |> then(fn struct ->
-            # Apply savepoint payload fields to struct
-            savepoint_event.payload
-            |> Map.drop(["__version__", "__event_id__"])
-            |> Enum.reduce(struct, fn {key, value}, acc ->
-              field = if is_binary(key), do: String.to_existing_atom(key), else: key
-              Map.put(acc, field, value)
-            end)
-          end)
-
-        initial_changeset = Changeset.change(initial_struct)
-
-        # Return events after the savepoint (excluding the savepoint itself)
-        events_after = Enum.drop(events, forward_index + 1)
-
-        {initial_changeset, events_after}
-    end
+    schema
+    |> struct!([{pk_field, event.parent_id}])
+    |> Changeset.change()
+    |> _set_changeset_action(:savepoint)
+    |> schema.changeset(Map.put(event.payload, "__event_id__", event.id))
+  end
+  def _roll_one(%{action: :delete}, _changeset, _schema), do: nil
+  def _roll_one(event, changeset, schema) do
+    changeset
+    |> _set_changeset_action(event.action)
+    |> schema.changeset(Map.put(event.payload, "__event_id__", event.id))
   end
 end

@@ -52,7 +52,7 @@ defmodule Spector.MixProject do
   defp docs do
     [
       main: "Spector",
-      extras: ["README.md", "guides/AI_chat.md", "guides/basic_chat.md"],
+      extras: ["README.md", "guides/AI_chat.md", "guides/basic_chat.md", "guides/links.md"],
       source_ref: "v#{@version}",
       source_url: @source_url,
       groups_for_extras: [
