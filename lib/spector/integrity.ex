@@ -104,7 +104,7 @@ defmodule Spector.Integrity do
   @doc """
   Verify the hash chain integrity of an entire events table.
 
-  Iterates through all events in the table ordered by id and verifies
+  Iterates through all events in the table ordered by inserted_at and verifies
   that each event's hash correctly chains from the previous event.
 
   Returns `:ok` if the hash chain is valid, or `{:error, exception}` where
