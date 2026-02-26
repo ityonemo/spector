@@ -166,6 +166,17 @@ end
 
 When replaying events, Spector starts from the most recent savepoint instead of the beginning, improving performance for records with long histories.
 
+### Materializing Records
+
+Recreate a database record from its event history:
+
+```elixir
+# If the record was deleted from the database but events remain
+{:ok, user} = Spector.materialize(MyApp.Events, user_id)
+```
+
+This replays all events for the given parent_id and inserts the resulting record into the database. Useful for recovering deleted records or populating a database from an event log.
+
 ### Hash Chain Integrity
 
 Enable tamper-evident event logs with cryptographic hashing:
