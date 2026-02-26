@@ -344,8 +344,8 @@ defmodule Spector do
   @doc """
   Materialize a record from the event log into its database table.
 
-  Takes a schema and parent_id, replays all events to reconstruct the record,
-  and inserts it into the database.
+  Takes an events module and parent_id, replays all events to reconstruct the
+  record, and inserts it into the database.
 
   Returns `{:ok, struct}` on success, or an error tuple:
   - `{:error, :invalid}` - No events exist for the given parent_id
@@ -354,22 +354,31 @@ defmodule Spector do
 
   ## Example
 
-      {:ok, user} = Spector.materialize(MyApp.User, parent_id)
+      {:ok, user} = Spector.materialize(MyApp.Events, parent_id)
   """
-  @spec materialize(evented_schema(), Ecto.UUID.t()) ::
+  @spec materialize(module(), Ecto.UUID.t()) ::
           {:ok, evented_struct()} | {:error, :invalid | :deleted | Ecto.Changeset.t()}
-  def materialize(schema, parent_id) do
-    events_module = schema.__spector__(:events)
-    repo = get_repo(schema, events_module)
-    events = all_events(schema, parent_id)
+  def materialize(events_module, parent_id) do
+    import Ecto.Query
+    repo = events_module.__spector__(:repo)
+    table = events_module.table_for(parent_id)
+
+    events =
+      from(e in {table, events_module},
+        where: e.parent_id == ^parent_id,
+        order_by: [asc: e.inserted_at]
+      )
+      |> repo.all()
 
     cond do
       changeset = roll_forward(events) ->
         changeset
         |> _set_changeset_action(:insert)
         |> repo.insert()
+
       Enum.empty?(events) ->
         {:error, :invalid}
+
       :else ->
         {:error, :deleted}
     end

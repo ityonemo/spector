@@ -5,6 +5,7 @@ defmodule SpectorTest.MaterializeTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.Basic
+  alias SpectorTest.Event
   alias SpectorTest.Repo
 
   setup do
@@ -21,7 +22,7 @@ defmodule SpectorTest.MaterializeTest do
       assert Repo.get(Basic, id) == nil
 
       # Materialize should recreate the record from events
-      assert {:ok, %{id: ^id, name: "Bob", value: 99}} = Spector.materialize(Basic, id)
+      assert {:ok, %{id: ^id, name: "Bob", value: 99}} = Spector.materialize(Event, id)
 
       # Record now exists in the database
       assert %{id: ^id, name: "Bob", value: 99} = Repo.get!(Basic, id)
@@ -40,14 +41,14 @@ defmodule SpectorTest.MaterializeTest do
       assert Repo.get(Basic, id) == nil
 
       # Materialize should recreate with all updates applied
-      assert {:ok, %{id: ^id, name: "Robert", value: 100}} = Spector.materialize(Basic, id)
+      assert {:ok, %{id: ^id, name: "Robert", value: 100}} = Spector.materialize(Event, id)
     end
 
     test "returns error when insert fails (record already exists)" do
       {:ok, %{id: id}} = Spector.insert(Basic, %{name: "Bob", value: 99})
 
       # Try to materialize when record already exists
-      assert {:error, changeset} = Spector.materialize(Basic, id)
+      assert {:error, changeset} = Spector.materialize(Event, id)
       assert %Ecto.Changeset{} = changeset
     end
 
@@ -57,13 +58,13 @@ defmodule SpectorTest.MaterializeTest do
       {:ok, _} = Spector.delete(record)
 
       # Try to materialize a deleted record
-      assert {:error, :deleted} = Spector.materialize(Basic, id)
+      assert {:error, :deleted} = Spector.materialize(Event, id)
     end
 
     test "returns {:error, :invalid} when no events exist for parent_id" do
       nonexistent_id = UUIDv7.generate()
 
-      assert {:error, :invalid} = Spector.materialize(Basic, nonexistent_id)
+      assert {:error, :invalid} = Spector.materialize(Event, nonexistent_id)
     end
   end
 end
