@@ -23,6 +23,8 @@ defmodule MyApp.AIChat do
   use Ecto.Schema
   alias Ecto.Changeset
 
+  @behaviour Spector.Evented
+
   defmodule Message do
     use Ecto.Schema
 

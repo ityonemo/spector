@@ -342,6 +342,43 @@ defmodule Spector do
   end
 
   @doc """
+  Materialize a record from the event log into its database table.
+
+  Takes a schema and parent_id, replays all events to reconstruct the record,
+  and inserts it into the database.
+
+  Returns `{:ok, struct}` on success, or an error tuple:
+  - `{:error, :invalid}` - No events exist for the given parent_id
+  - `{:error, :deleted}` - Event history ends with a delete action
+  - `{:error, changeset}` - Insert failed (e.g., record already exists)
+
+  ## Example
+
+      {:ok, user} = Spector.materialize(MyApp.User, parent_id)
+  """
+  @spec materialize(evented_schema(), Ecto.UUID.t()) ::
+          {:ok, evented_struct()} | {:error, :invalid | :deleted | Ecto.Changeset.t()}
+  def materialize(schema, parent_id) do
+    events_module = schema.__spector__(:events)
+    repo = get_repo(schema, events_module)
+    events = all_events(schema, parent_id)
+
+    cond do
+      changeset = roll_forward(events) ->
+        changeset
+        |> _set_changeset_action(:insert)
+        |> repo.insert()
+      Enum.empty?(events) ->
+        {:error, :invalid}
+      :else ->
+        {:error, :deleted}
+    end
+  rescue
+    error in Ecto.ConstraintError ->
+      {:error, Changeset.add_error(%Changeset{}, :id, error.message)}
+  end
+
+  @doc """
   Returns all events for a record from the beginning.
 
   Events are returned in insertion order.

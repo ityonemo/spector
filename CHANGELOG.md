@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+
+### New Features
+- `Spector.materialize/2` to replay events and insert the resulting record into the database
+
+### Fixes
+- Fixed `verify_hash_chain/1` docstring to correctly state ordering is by `inserted_at` (not `id`)
+
 ## 0.6.0
 
 ### Savepoints

@@ -3,7 +3,6 @@ defmodule SpectorTest.CustomPKTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.CustomPK
-  alias SpectorTest.Event
   alias SpectorTest.Repo
 
   setup do

@@ -3,7 +3,6 @@ defmodule SpectorTest.EmbeddedTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.Chat
-  alias SpectorTest.Event
   alias SpectorTest.Repo
 
   setup do

@@ -22,6 +22,8 @@ defmodule MyApp.BasicChat do
   alias Ecto.Changeset
   import Ecto.Query
 
+  @behaviour Spector.Evented
+
   defmodule Message do
     use Ecto.Schema
 
@@ -56,6 +58,8 @@ defmodule MyApp.BasicChat do
     event_changeset
   end
 
+  def changeset(chat \\ %__MODULE__{}, attrs)
+
   def changeset(chat, %{edits: message_id, content: new_content}) when chat.action == :edit do
     chat = Changeset.change(chat)
     current_messages = Changeset.get_field(chat, :messages, [])
@@ -72,7 +76,7 @@ defmodule MyApp.BasicChat do
     Changeset.put_change(chat, :messages, updated_messages)
   end
 
-  def changeset(chat \\ %__MODULE__{}, attrs) do
+  def changeset(chat, attrs) do
     chat = Changeset.change(chat)
 
     message =
@@ -181,7 +185,7 @@ Use the `:edit` action with `:edits` pointing to the message ID being edited:
 ```elixir
 [_, %{id: first_message_id}] = chat.messages
 
-assert {:ok, %{messages: [%{content: "Hi there!"}, %{content: "Hello everyone! (edited)"}]} = chat} =
+assert {:ok, %{messages: [%{content: "Hi there!"}, %{content: "Hello everyone! (edited)"}]}} =
   Spector.execute(chat, :edit, %{
     edits: first_message_id,
     content: "Hello everyone! (edited)"

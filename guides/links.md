@@ -58,6 +58,8 @@ defmodule MyApp.TypedDoc do
   use Ecto.Schema
   alias Ecto.Changeset
 
+  @behaviour Spector.Evented
+
   @primary_key {:id, :binary_id, autogenerate: false}
   embedded_schema do
     field :content, :string

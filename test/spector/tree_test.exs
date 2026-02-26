@@ -4,7 +4,6 @@ defmodule SpectorTest.TreeTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias SpectorTest.Repo
   alias SpectorTest.TreeChat
-  alias SpectorTest.TreeEvent
 
   setup do
     :ok = Sandbox.checkout(Repo)
