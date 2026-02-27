@@ -376,6 +376,12 @@ defmodule Spector do
       changeset = roll_forward(events) ->
         schema = hd(events).schema
 
+        if !schema.__schema__(:source) do
+          raise ArgumentError,
+                "materialize/2 requires a database-backed schema, " <>
+                  "but #{inspect(schema)} is an embedded schema"
+        end
+
         changeset
         |> _set_changeset_action(:insert)
         |> maybe_prepare_materialization(schema)
