@@ -211,8 +211,9 @@ defmodule Spector.Evented do
 
   Runs inside the same transaction as the insert/update.
 
-  **Note:** This callback only runs for database-backed schemas, not embedded schemas.
-  Embedded schemas use `Changeset.apply_action/2` instead of `Repo.insert/update`.
+  This callback is primarily intended for database-backed schemas. For embedded
+  schemas, it is not called automatically, but you may define it for manual use
+  or to enforce invariants.
 
   ## Example
 

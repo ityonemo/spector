@@ -11,7 +11,7 @@ Add `spector` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:spector, "~> 0.7.0"}
+    {:spector, "~> 0.8.0"}
   ]
 end
 ```
@@ -176,6 +176,32 @@ Recreate a database record from its event history:
 ```
 
 This replays all events for the given parent_id and inserts the resulting record into the database. Useful for recovering deleted records or populating a database from an event log.
+
+### Preparing Materialization
+
+Use the `prepare_materialization/1` callback to modify the final changeset before database insert/update. This is useful for setting associations from accumulated data:
+
+```elixir
+defmodule MyApp.Task do
+  @behaviour Spector.Evented
+  use Spector.Evented, events: MyApp.Events
+
+  schema "tasks" do
+    field :title, :string
+    field :assignee_ids, {:array, :binary_id}, virtual: true
+    many_to_many :assignees, MyApp.User, join_through: "task_assignees"
+  end
+
+  @impl true
+  def prepare_materialization(changeset) do
+    assignee_ids = Ecto.Changeset.get_field(changeset, :assignee_ids) || []
+    users = Enum.map(assignee_ids, &%MyApp.User{id: &1})
+    Ecto.Changeset.put_assoc(changeset, :assignees, users)
+  end
+end
+```
+
+This callback is primarily for database-backed schemas. For embedded schemas, it is not called automatically but may be defined for manual use.
 
 ### Hash Chain Integrity
 

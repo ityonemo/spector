@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+### New Features
+- `prepare_materialization/1` optional callback - runs on the final changeset just before `Repo.insert/update`, useful for setting associations via `put_assoc`
+- Added `telemetry` as an explicit dependency
+
+### Fixes
+- `materialize/2` now raises `ArgumentError` if called with an embedded schema
+
 ## 0.7.0
 
 ### New Features
