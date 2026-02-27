@@ -9,7 +9,8 @@ defmodule SpectorTest.Event do
       SpectorTest.Chat,
       SpectorTest.BringupSchema,
       SpectorTest.CustomPK,
-      SpectorTest.Savepointable
+      SpectorTest.Savepointable,
+      SpectorTest.PrepareMaterializationSchema
     ],
     repo: SpectorTest.Repo
 end

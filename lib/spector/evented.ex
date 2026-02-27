@@ -202,7 +202,30 @@ defmodule Spector.Evented do
   """
   @callback savepoint(record :: struct(), version :: non_neg_integer()) :: map()
 
-  @optional_callbacks [prepare_event: 3, savepoint: 2]
+  @doc """
+  Prepare the final changeset before materialization.
+
+  Called on the accumulated changeset after all events have been replayed,
+  just before `Repo.insert()` or `Repo.update()`. Use this to convert
+  accumulated data into associations.
+
+  Runs inside the same transaction as the insert/update.
+
+  **Note:** This callback only runs for database-backed schemas, not embedded schemas.
+  Embedded schemas use `Changeset.apply_action/2` instead of `Repo.insert/update`.
+
+  ## Example
+
+      @impl Spector.Evented
+      def prepare_materialization(changeset) do
+        assignee_ids = Changeset.get_field(changeset, :assignee_ids) || []
+        users = Enum.map(assignee_ids, &%MyApp.User{id: &1})
+        Changeset.put_assoc(changeset, :assignees, users)
+      end
+  """
+  @callback prepare_materialization(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
+
+  @optional_callbacks [prepare_event: 3, savepoint: 2, prepare_materialization: 1]
 
   @doc """
   Creates a has_many association to the event log for this record.

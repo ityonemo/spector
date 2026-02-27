@@ -288,6 +288,7 @@ defmodule Spector do
     if schema.__schema__(:source) do
       changeset
       |> _set_changeset_action(:insert)
+      |> maybe_prepare_materialization(schema)
       |> repo.insert()
     else
       Changeset.apply_action(changeset, :insert)
@@ -298,6 +299,7 @@ defmodule Spector do
     if schema.__schema__(:source) do
       changeset
       |> _set_changeset_action(:update)
+      |> maybe_prepare_materialization(schema)
       |> repo.update()
     else
       Changeset.apply_action(changeset, :update)
@@ -372,8 +374,11 @@ defmodule Spector do
 
     cond do
       changeset = roll_forward(events) ->
+        schema = hd(events).schema
+
         changeset
         |> _set_changeset_action(:insert)
+        |> maybe_prepare_materialization(schema)
         |> repo.insert()
 
       Enum.empty?(events) ->
@@ -941,6 +946,14 @@ defmodule Spector do
       schema.prepare_event(event_changeset, previous_events, attrs)
     else
       event_changeset
+    end
+  end
+
+  defp maybe_prepare_materialization(changeset, schema) do
+    if function_exported?(schema, :prepare_materialization, 1) do
+      schema.prepare_materialization(changeset)
+    else
+      changeset
     end
   end
 
