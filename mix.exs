@@ -39,7 +39,8 @@ defmodule Spector.MixProject do
       {:postgrex, "~> 0.19", only: :test},
       {:stream_data, "~> 1.0", only: :test},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:otzel, "~> 0.5.1", only: :dev}
     ]
   end
 
@@ -54,7 +55,7 @@ defmodule Spector.MixProject do
   defp docs do
     [
       main: "Spector",
-      extras: ["README.md", "guides/AI_chat.md", "guides/basic_chat.md", "guides/links.md"],
+      extras: ["README.md", "guides/AI_chat.md", "guides/associations.md", "guides/basic_chat.md", "guides/links.md", "guides/otzel.md"],
       source_ref: "v#{@version}",
       source_url: @source_url,
       groups_for_extras: [
