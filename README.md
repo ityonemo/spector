@@ -255,6 +255,14 @@ Spector includes features specifically designed for chat-log style applications:
 
 See the [AI Chat Guide](guides/AI_chat.md) for conversation branching and the [Basic Chat Guide](guides/basic_chat.md) for edit history tracking.
 
+## Guides
+
+- [Building an AI Chat Log](guides/AI_chat.md) - Conversation branching with tree-structured message history
+- [Associations Guide](guides/associations.md) - Handling Ecto associations with event-sourced schemas
+- [Building a Basic Chat](guides/basic_chat.md) - Simple chat with edit history tracking
+- [Event Links Guide](guides/links.md) - Creating many-to-many relationships between events
+- [Otzel Integration](guides/otzel.md) - Rich text editing with Operational Transformation
+
 ## Database Support
 
 Spector works with any database supported by Ecto for basic functionality.

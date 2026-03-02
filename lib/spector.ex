@@ -100,7 +100,10 @@ defmodule Spector do
   For complete examples of building applications with Spector:
 
   - [Building an AI Chat Log](AI_chat.md) - Conversation branching with tree-structured message history
+  - [Associations Guide](associations.md) - Handling Ecto associations with event-sourced schemas
   - [Building a Basic Chat](basic_chat.md) - Simple chat with edit history tracking
+  - [Event Links Guide](links.md) - Creating many-to-many relationships between events
+  - [Otzel Integration](otzel.md) - Rich text editing with Operational Transformation
 
   ## Features
 
